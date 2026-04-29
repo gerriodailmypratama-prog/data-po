@@ -34,8 +34,12 @@ body { min-height: 100dvh; padding-bottom: 220px; }
 body.no-bottom { padding-bottom: 0; }
 
 /* === SCREENS === */
-.screen { display: none; }
-.screen.active { display: block; }
+/* All screens hidden by default. Layout classes specify how to display when active. */
+.screen { display: none !important; }
+.screen.active.splash,
+.screen.active.login,
+.screen.active.onboarding { display: flex !important; }
+.screen.active:not(.splash):not(.login):not(.onboarding) { display: block !important; }
 
 /* === LOGIN === */
 .login {
