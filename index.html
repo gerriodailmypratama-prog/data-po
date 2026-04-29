@@ -1779,6 +1779,18 @@ $('user-chip').addEventListener('click', async () => {
         </div>
         
         <div class="menu-section">
+          <div class="menu-section-label">Data</div>
+          <button class="menu-btn" id="m-import-v3">
+            <span>Import backup v3 (.json lama)</span>
+            <span class="menu-btn-icon">↑</span>
+          </button>
+          <button class="menu-btn" id="m-export-backup">
+            <span>Download backup .json (cloud)</span>
+            <span class="menu-btn-icon">↓</span>
+          </button>
+        </div>
+        
+        <div class="menu-section">
           <button class="menu-btn danger" id="m-signout">
             <span>Sign out</span>
             <span class="menu-btn-icon">→</span>
@@ -1791,10 +1803,242 @@ $('user-chip').addEventListener('click', async () => {
   $('mc').onclick = () => root.innerHTML = '';
   $('m-invite').onclick = showInviteCode;
   $('m-join').onclick = showJoinModal;
+  $('m-import-v3').onclick = startImportV3;
+  $('m-export-backup').onclick = exportCloudBackup;
   $('m-signout').onclick = () => {
     if (confirm('Sign out?')) signOut();
   };
 });
+
+// =================================================================
+// IMPORT V3 BACKUP — convert old localStorage .json into Supabase
+// =================================================================
+function startImportV3() {
+  $('modal-root').innerHTML = '';
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.json,application/json';
+  inp.onchange = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) await importV3Backup(f);
+  };
+  inp.click();
+}
+
+async function importV3Backup(file) {
+  let text;
+  try {
+    text = await file.text();
+  } catch (e) {
+    showToast('Gagal baca file', true);
+    return;
+  }
+  
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    showToast('JSON invalid: ' + e.message, true);
+    return;
+  }
+  
+  if (!parsed.suppliers || !Array.isArray(parsed.suppliers) || !parsed.data) {
+    showToast('Format backup ga dikenali (bukan v3?)', true);
+    return;
+  }
+  
+  // Count what will be imported
+  let totalItems = 0;
+  let totalPhotos = 0;
+  for (const sName of parsed.suppliers) {
+    const sd = parsed.data[sName];
+    if (!sd || !Array.isArray(sd.items)) continue;
+    totalItems += sd.items.length;
+    totalPhotos += sd.items.filter(i => i.photo && typeof i.photo === 'string' && i.photo.startsWith('data:')).length;
+  }
+  
+  const existingNames = new Set(suppliers.map(s => s.name));
+  const newSupplierCount = parsed.suppliers.filter(n => !existingNames.has(n)).length;
+  const skipSupplierCount = parsed.suppliers.length - newSupplierCount;
+  
+  const msg = `Import dari backup .json:\n\n` +
+              `• ${newSupplierCount} supplier baru\n` +
+              `• ${skipSupplierCount} supplier udah ada (item-nya bakal di-tambahin)\n` +
+              `• ${totalItems} item total\n` +
+              `• ${totalPhotos} foto bakal di-upload ke cloud\n\n` +
+              `Lanjut?`;
+  
+  if (!confirm(msg)) return;
+  
+  setSyncStatus('syncing', 'importing...');
+  
+  let importedSuppliers = 0;
+  let importedItems = 0;
+  let failedItems = 0;
+  let processedCount = 0;
+  
+  for (const supplierName of parsed.suppliers) {
+    const oldData = parsed.data[supplierName];
+    if (!oldData || !Array.isArray(oldData.items)) continue;
+    
+    let supplier = suppliers.find(s => s.name === supplierName);
+    
+    if (!supplier) {
+      const oldSettings = oldData.settings || {};
+      const newSettings = {
+        kurs: typeof oldSettings.kurs === 'number' ? oldSettings.kurs : DEFAULT_SETTINGS.kurs,
+        ongkir: typeof oldSettings.ongkir === 'number' ? oldSettings.ongkir : DEFAULT_SETTINGS.ongkir,
+        // v3 had .profit, .margin renamed; pick either, fallback default
+        margin: typeof oldSettings.margin === 'number' ? oldSettings.margin
+              : typeof oldSettings.profit === 'number' ? oldSettings.profit
+              : DEFAULT_SETTINGS.margin,
+        discount: typeof oldSettings.discount === 'number' ? oldSettings.discount : DEFAULT_SETTINGS.discount
+      };
+      
+      const { data, error } = await supabase
+        .from('suppliers')
+        .insert({
+          workspace_id: workspace.id,
+          name: supplierName,
+          position: suppliers.length,
+          settings: newSettings
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        console.warn('Failed to create supplier', supplierName, error);
+        showToast('Gagal bikin supplier ' + supplierName, true);
+        continue;
+      }
+      
+      suppliers.push(data);
+      items[data.id] = [];
+      supplier = data;
+      importedSuppliers++;
+    }
+    
+    // Import items for this supplier
+    let pos = (items[supplier.id] || []).length;
+    
+    for (const oldItem of oldData.items) {
+      processedCount++;
+      showToast(`Importing ${processedCount}/${totalItems}... (${supplierName})`);
+      
+      const itemData = {
+        workspace_id: workspace.id,
+        supplier_id: supplier.id,
+        nama: (oldItem.nama || '(no name)').toString().slice(0, 200),
+        color: (oldItem.color || '').toString().slice(0, 100),
+        size: (oldItem.size || 'FS').toString().slice(0, 50),
+        box: parseInt(oldItem.box) || 1,
+        qty: parseInt(oldItem.qty) || 0,
+        rmb: parseFloat(oldItem.rmb) || 0,
+        position: pos++
+      };
+      
+      const { data: newItem, error: itemErr } = await supabase
+        .from('items')
+        .insert(itemData)
+        .select()
+        .single();
+      
+      if (itemErr) {
+        console.warn('Failed to create item', oldItem.nama, itemErr);
+        failedItems++;
+        continue;
+      }
+      
+      // Upload photo if present
+      if (oldItem.photo && typeof oldItem.photo === 'string' && oldItem.photo.startsWith('data:')) {
+        try {
+          const blob = await (await fetch(oldItem.photo)).blob();
+          const path = await uploadPhoto(blob, newItem.id);
+          await supabase.from('items').update({ photo_path: path }).eq('id', newItem.id);
+          newItem.photo_path = path;
+        } catch (e) {
+          console.warn('Photo upload failed for', oldItem.nama, e);
+        }
+      }
+      
+      if (!items[supplier.id]) items[supplier.id] = [];
+      items[supplier.id].push(newItem);
+      importedItems++;
+    }
+  }
+  
+  setSyncStatus('ok', 'synced');
+  
+  const failMsg = failedItems > 0 ? `, ${failedItems} item gagal` : '';
+  showToast(`✓ Done! ${importedSuppliers} supplier, ${importedItems} item${failMsg}`);
+  
+  // Reload + re-render
+  await loadAllData();
+  if (!currentSupplierId && suppliers.length) currentSupplierId = suppliers[0].id;
+  renderAll();
+}
+
+// Export current cloud data as v3-compatible .json (for backup)
+async function exportCloudBackup() {
+  $('modal-root').innerHTML = '';
+  setSyncStatus('syncing', 'exporting...');
+  
+  const backup = {
+    suppliers: suppliers.map(s => s.name),
+    current: getCurrentSupplier()?.name || suppliers[0]?.name,
+    data: {},
+    _meta: {
+      exported_at: new Date().toISOString(),
+      from: 'cloud-v4',
+      workspace: workspace.name
+    }
+  };
+  
+  for (const s of suppliers) {
+    const itemList = items[s.id] || [];
+    backup.data[s.name] = {
+      settings: s.settings,
+      items: []
+    };
+    
+    for (const it of itemList) {
+      const exported = {
+        id: it.id,
+        nama: it.nama,
+        color: it.color,
+        size: it.size,
+        box: it.box,
+        qty: it.qty,
+        rmb: it.rmb,
+        photo: null
+      };
+      
+      // Try fetching photo as base64 (can be slow if many photos)
+      if (it.photo_path) {
+        try {
+          const url = getPhotoUrl(it.photo_path);
+          const resp = await fetch(url);
+          const blob = await resp.blob();
+          const reader = new FileReader();
+          await new Promise((resolve) => {
+            reader.onload = () => { exported.photo = reader.result; resolve(); };
+            reader.onerror = resolve;
+            reader.readAsDataURL(blob);
+          });
+        } catch (e) {
+          console.warn('Photo fetch failed', e);
+        }
+      }
+      
+      backup.data[s.name].items.push(exported);
+    }
+  }
+  
+  const stamp = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  download(JSON.stringify(backup, null, 2), `PO_cloud_backup_${stamp}.json`, 'application/json');
+  setSyncStatus('ok', 'synced');
+  showToast('✓ Backup downloaded');
+}
 
 function showInviteCode() {
   const root = $('modal-root');
