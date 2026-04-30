@@ -3405,5 +3405,51 @@ init();
   })();
 </script>
   
+<script>
+  (function(){
+      // === R8 patch: fix RENAME-on-click bug ===
+      // Root cause: dashboard tab (.tab-dash) had class 'active' even though hidden.
+      // App's tab navigation logic: clicking tab supplier checks if it matches "current active tab"
+      // Since dashboard tab was active (hidden), no supplier tab was active in DOM.
+      // App's currentSupplierId pointed to first supplier (Ying) by default.
+      // Clicking Ying: app sees "click on tab matching currentSupplier" → trigger RENAME prompt.
+      // R8 fix: ensure dashboard tab NEVER has class 'active', and ensure first supplier tab IS active on init.
+
+      function fixActiveState(){
+            var dashTab = document.querySelector('#tabs .tab-dash');
+            if (dashTab && dashTab.classList.contains('active')) {
+                    dashTab.classList.remove('active');
+            }
+            // Ensure at least one supplier tab is marked active if none currently is
+            var allTabs = document.querySelectorAll('#tabs .tab');
+            var anyActive = false;
+            allTabs.forEach(function(t){
+                    if (t.classList.contains('active') && !t.classList.contains('tab-dash')) anyActive = true;
+            });
+            if (!anyActive) {
+                    // Find first supplier tab (not dash, not add) and mark active
+                    var firstSup = Array.from(allTabs).find(function(t){
+                              return !t.classList.contains('tab-dash') && !t.classList.contains('tab-add');
+                    });
+                    if (firstSup) firstSup.classList.add('active');
+            }
+      }
+
+      // Run periodically to handle race conditions with R3/R4/R5 observers
+      fixActiveState();
+      setTimeout(fixActiveState, 100);
+      setTimeout(fixActiveState, 500);
+      setTimeout(fixActiveState, 1500);
+      setTimeout(fixActiveState, 3000);
+      // Hook into tabs container mutations
+      var tabsEl = document.getElementById('tabs');
+      if (tabsEl) {
+            new MutationObserver(fixActiveState).observe(tabsEl, {childList:true, subtree:true, attributes:true, attributeFilter:['class']});
+      }
+
+      window.__poR8 = { fix: fixActiveState };
+  })();
+</script>
+  
 </body>
 </html>
