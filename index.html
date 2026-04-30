@@ -3450,6 +3450,46 @@ init();
       window.__poR8 = { fix: fixActiveState };
   })();
 </script>
-  
+<script>
+  // R9: fix 'foto nyangkut' bug - reset photo & qty after submit success
+  (function(){
+      'use strict';
+      function $(id){return document.getElementById(id);}
+      var addForm = $('add-form');
+      if (!addForm) { setTimeout(arguments.callee, 200); return; }
+      // Capture intent: was this an ADD (not edit) submit?
+      // We hook submit AFTER the app's handler by using setTimeout in the same event
+      addForm.addEventListener('submit', function(e){
+            var wasEditing = !!window.editingId;
+            // Run AFTER app's async submit handler completes (give it ~600ms)
+            setTimeout(function(){
+                    // Only reset if NOT editing (add mode)
+                    if (wasEditing) return;
+                    try {
+                              // 1. Clear photo visually
+                              if (typeof window.setPhotoPreview === 'function') {
+                                          window.setPhotoPreview(null);
+                              } else {
+                                          var wrap = $('photo-wrap');
+                                          if (wrap) {
+                                                        var oldImg = wrap.querySelector('img');
+                                                        if (oldImg) oldImg.remove();
+                                                        wrap.classList.remove('has-photo');
+                                          }
+                              }
+                              // 2. Clear file input value (so same filename can re-upload)
+                              var fp = $('f-photo');
+                              if (fp) { try { fp.value = ''; } catch(_){} }
+                              // 3. Clear currentPhotoFile JS var (belt and suspenders)
+                              try { window.currentPhotoFile = null; } catch(_){}
+                              // 4. Reset qty (prevent stale qty from previous item)
+                              var fq = $('f-qty');
+                              if (fq) fq.value = '';
+                    } catch(err) { console.warn('[R9]', err); }
+            }, 600);
+      }, false); // bubble phase = runs AFTER capture phase + after app handler resolves promise
+      console.log('[R9] photo+qty auto-reset installed');
+  })();
+</script>
 </body>
 </html>
