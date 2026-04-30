@@ -831,6 +831,238 @@ body.no-bottom { padding-bottom: 0; }
     /* Soften img borders in dark */
   img { filter: brightness(0.95); }
 }
+/* === Dashboard Overlay (Round 3) === */
+.dash-trigger {
+    position: fixed; top: 14px; right: 14px;
+    z-index: 80;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    display: none;
+    align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 16px; line-height: 1;
+    box-shadow: var(--shadow-sm);
+    transition: transform .15s ease;
+    font-family: 'Geist', sans-serif;
+    color: var(--ink);
+}
+.dash-trigger:hover { transform: scale(1.05); }
+.dash-trigger.show { display: flex; }
+
+#dashboard-overlay {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    z-index: 100;
+    overflow-y: auto;
+    display: none;
+    font-family: 'Geist', sans-serif;
+    color: var(--ink);
+}
+#dashboard-overlay.show { display: block; }
+.dash-wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 24px 20px 80px;
+}
+.dash-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+}
+.dash-brand {
+    font-family: 'Fraunces', serif;
+    font-size: 28px; font-weight: 700;
+    font-variation-settings: 'opsz' 144, 'SOFT' 50;
+}
+.dash-brand .dot { color: var(--accent); }
+.dash-close {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 8px 14px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    cursor: pointer;
+}
+.dash-close:hover { background: var(--line-soft); }
+.dash-greeting {
+    font-family: 'Fraunces', serif;
+    font-size: 26px; font-weight: 500;
+    margin-top: 28px;
+    font-variation-settings: 'opsz' 144;
+}
+.dash-greeting-sub {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-top: 6px;
+    margin-bottom: 24px;
+}
+.dash-stale {
+    display: inline-block;
+    font-family: 'Geist Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    background: var(--warn-bg);
+    color: var(--warn-fg);
+    padding: 3px 8px;
+    border-radius: 4px;
+    margin-left: 8px;
+    letter-spacing: 0.04em;
+}
+.dash-kpi-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 32px;
+}
+.dash-kpi {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px;
+}
+.dash-kpi-label {
+    font-family: 'Geist Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+}
+.dash-kpi-val {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 700;
+    font-variation-settings: 'opsz' 144;
+}
+.dash-kpi-val.profit { color: var(--profit); }
+.dash-kpi-sub {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+}
+.dash-section-title {
+    font-family: 'Fraunces', serif;
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    margin-top: 32px;
+    font-variation-settings: 'opsz' 144;
+}
+.dash-supplier {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+.dash-supplier:hover {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-sm);
+}
+.dash-supplier-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 4px;
+}
+.dash-supplier-name {
+    font-family: 'Fraunces', serif;
+    font-size: 17px;
+    font-weight: 600;
+}
+.dash-supplier-meta {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+}
+.dash-supplier-vals {
+    display: flex; gap: 14px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-bottom: 8px;
+}
+.dash-supplier-vals .profit { color: var(--profit); font-weight: 600; }
+.dash-bar-wrap {
+    height: 6px;
+    background: var(--line-soft);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+}
+.dash-bar-fill {
+    height: 100%;
+    background: var(--profit);
+    border-radius: 3px;
+    transition: width .4s ease;
+}
+.dash-bar-label {
+    font-family: 'Geist Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 4px;
+    text-align: right;
+}
+.dash-product {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line-soft);
+}
+.dash-product:last-child { border-bottom: 0; }
+.dash-product-rank {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    color: var(--muted);
+    width: 26px;
+    font-variation-settings: 'opsz' 144;
+}
+.dash-product-photo {
+    width: 44px; height: 44px;
+    border-radius: var(--radius-sm, 6px);
+    object-fit: cover;
+    background: var(--line-soft);
+    flex-shrink: 0;
+}
+.dash-product-photo.empty {
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Fraunces', serif;
+    color: var(--line);
+    font-size: 18px;
+    border: 1px solid var(--line);
+}
+.dash-product-info { flex: 1; min-width: 0; }
+.dash-product-name {
+    font-weight: 600;
+    font-size: 14px;
+}
+.dash-product-sub {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+}
+.dash-product-profit {
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    color: var(--profit);
+    font-weight: 600;
+    white-space: nowrap;
+}
+.dash-empty, .dash-loading, .dash-error {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+}
+.dash-error { color: var(--danger); }
 </style>
 </head>
 <body>
@@ -2407,6 +2639,207 @@ init();
             });
       });
   }
+// === Dashboard Overlay (additive, non-invasive) ===
+(function(){
+    const BACKUP_URL = 'PO_cloud_backup_20260429.json';
+    const fmt = (n) => {
+          if (!isFinite(n) || n == null) return '-';
+          if (Math.abs(n) >= 1e9) return 'Rp ' + (n/1e9).toFixed(1) + 'M';
+          if (Math.abs(n) >= 1e6) return 'Rp ' + (n/1e6).toFixed(1) + 'jt';
+          if (Math.abs(n) >= 1e3) return 'Rp ' + Math.round(n/1e3) + 'rb';
+          return 'Rp ' + Math.round(n);
+    };
+    const fmtNum = (n) => (n||0).toLocaleString('id-ID');
+  
+   // Approximate same calc as app: modal_pc = rmb*kurs + ongkir; tampil = modal/(1-margin)/(1-discount)
+   function calcItem(item, settings) {
+         const rmb = +item.rmb || 0;
+         const qty = +item.qty || 0;
+         const kurs = +settings.kurs || 0;
+         const ongkir = +settings.ongkir || 0;
+         const margin = +settings.margin || 0;
+         const discount = +settings.discount || 0;
+         const modal_pc = (rmb * kurs) + ongkir;
+         const denom = Math.max(0.01, (1 - margin) * (1 - discount));
+         const tampil = modal_pc / denom;
+         const profit_pc = tampil - modal_pc;
+         const modal_row = modal_pc * qty;
+         const tampil_row = tampil * qty;
+         const profit_row = profit_pc * qty;
+         return { modal_pc, tampil, profit_pc, modal_row, tampil_row, profit_row };
+   }
+  
+   function compute(backup) {
+         const suppliers = [];
+         const allProducts = [];
+         let totalModal = 0, totalTampil = 0, totalProfit = 0, totalQty = 0, totalItems = 0;
+         const data = backup.data || {};
+         for (const name of (backup.suppliers || Object.keys(data))) {
+                 const sup = data[name];
+                 if (!sup) continue;
+                 const items = sup.items || [];
+                 let sM=0, sT=0, sP=0, sQ=0;
+                 for (const it of items) {
+                           const c = calcItem(it, sup.settings || {});
+                           sM += c.modal_row; sT += c.tampil_row; sP += c.profit_row; sQ += (+it.qty||0);
+                           allProducts.push({
+                                       supplier: name,
+                                       name: it.nama || '?',
+                                       color: it.color || '',
+                                       size: it.size || '',
+                                       qty: +it.qty||0,
+                                       photo: it.photo || null,
+                                       profit_row: c.profit_row,
+                                       profit_pc: c.profit_pc,
+                                       modal_pc: c.modal_pc,
+                           });
+                 }
+                 const roi = sM > 0 ? (sP / sM) * 100 : 0;
+                 suppliers.push({ name, items: items.length, qty: sQ, modal: sM, tampil: sT, profit: sP, roi });
+                 totalModal += sM; totalTampil += sT; totalProfit += sP; totalQty += sQ; totalItems += items.length;
+         }
+         const avgRoi = totalModal > 0 ? (totalProfit / totalModal) * 100 : 0;
+         suppliers.sort((a,b) => b.profit - a.profit);
+         const topProducts = allProducts.sort((a,b) => b.profit_row - a.profit_row).slice(0, 5);
+         return { suppliers, totalModal, totalTampil, totalProfit, totalQty, totalItems, avgRoi, topProducts, exportedAt: (backup._meta && backup._meta.exported_at) || null, workspaceName: (backup._meta && backup._meta.workspace) || '' };
+   }
+  
+   function escHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  
+   function renderHtml(m) {
+         const dateStr = m.exportedAt ? new Date(m.exportedAt).toLocaleDateString('id-ID', {day:'numeric',month:'short',year:'numeric'}) : 'unknown';
+         const greetingName = escHtml(m.workspaceName.split(' ')[0] || 'kamu');
+         const maxProfit = Math.max(...m.suppliers.map(s => s.profit), 1);
+         const supplierRows = m.suppliers.map(s => {
+                 const pct = (s.profit / maxProfit) * 100;
+                 return `
+                         <div class="dash-supplier" data-supplier="${escHtml(s.name)}">
+                                   <div class="dash-supplier-head">
+                                               <div class="dash-supplier-name">${escHtml(s.name)}</div>
+                                                           <div class="dash-supplier-meta">${s.items} model · ${fmtNum(s.qty)} pcs</div>
+                                                                     </div>
+                                                                               <div class="dash-supplier-vals">
+                                                                                           <span>Modal ${fmt(s.modal)}</span>
+                                                                                                       <span class="profit">+${fmt(s.profit)}</span>
+                                                                                                                   <span>${s.roi.toFixed(0)}% ROI</span>
+                                                                                                                             </div>
+                                                                                                                                       <div class="dash-bar-wrap"><div class="dash-bar-fill" style="width:${pct.toFixed(1)}%"></div></div>
+                                                                                                                                               </div>
+                                                                                                                                                     `;
+         }).join('');
+         const productRows = m.topProducts.map((p, i) => {
+                 const photoSrc = (p.photo && p.photo.startsWith && (p.photo.startsWith('http') || p.photo.startsWith('data:'))) ? p.photo : null;
+                 const photoEl = photoSrc
+                   ? `<img class="dash-product-photo" src="${escHtml(photoSrc)}" alt="" loading="lazy">`
+                           : `<div class="dash-product-photo empty">${(p.name||'?').charAt(0)}</div>`;
+                 return `
+                         <div class="dash-product">
+                                   <div class="dash-product-rank">${i+1}</div>
+                                             ${photoEl}
+                                                       <div class="dash-product-info">
+                                                                   <div class="dash-product-name">${escHtml(p.name)}</div>
+                                                                               <div class="dash-product-sub">${escHtml(p.supplier)}${p.color?' · '+escHtml(p.color):''} · ${fmtNum(p.qty)} pcs</div>
+                                                                                         </div>
+                                                                                                   <div class="dash-product-profit">${fmt(p.profit_row)}</div>
+                                                                                                           </div>
+                                                                                                                 `;
+         }).join('');
+         return `
+               <div class="dash-wrap">
+                       <div class="dash-head">
+                                 <div class="dash-brand">PO<span class="dot">.</span></div>
+                                           <button class="dash-close" id="dash-close-btn">✕ Tutup</button>
+                                                   </div>
+                                                           <div class="dash-greeting">Halo, ${greetingName}</div>
+                                                                   <div class="dash-greeting-sub">${m.suppliers.length} supplier · ${m.totalItems} model · ${fmtNum(m.totalQty)} pcs<span class="dash-stale">snapshot ${dateStr}</span></div>
+                                                                           <div class="dash-kpi-grid">
+                                                                                     <div class="dash-kpi"><div class="dash-kpi-label">Total Modal</div><div class="dash-kpi-val">${fmt(m.totalModal)}</div></div>
+                                                                                               <div class="dash-kpi"><div class="dash-kpi-label">Total Profit</div><div class="dash-kpi-val profit">+${fmt(m.totalProfit)}</div></div>
+                                                                                                         <div class="dash-kpi"><div class="dash-kpi-label">ROI Rata²</div><div class="dash-kpi-val">${m.avgRoi.toFixed(0)}%</div></div>
+                                                                                                                   <div class="dash-kpi"><div class="dash-kpi-label">Total Pcs</div><div class="dash-kpi-val">${fmtNum(m.totalQty)}</div><div class="dash-kpi-sub">harga jual ${fmt(m.totalTampil)}</div></div>
+                                                                                                                           </div>
+                                                                                                                                   <div class="dash-section-title">Per Supplier</div>
+                                                                                                                                           ${supplierRows || '<div class="dash-empty">Belum ada supplier</div>'}
+                                                                                                                                                   <div class="dash-section-title">Top 5 Most Profitable</div>
+                                                                                                                                                           ${productRows || '<div class="dash-empty">Belum ada produk</div>'}
+                                                                                                                                                                 </div>
+                                                                                                                                                                     `;
+   }
+  
+   let cachedBackup = null;
+    async function loadAndRender() {
+          const overlay = document.getElementById('dashboard-overlay');
+          if (!overlay) return;
+          overlay.innerHTML = '<div class="dash-loading">Loading dashboard...</div>';
+          try {
+                  if (!cachedBackup) {
+                            const r = await fetch(BACKUP_URL + '?t=' + Date.now());
+                            if (!r.ok) throw new Error('HTTP ' + r.status);
+                            cachedBackup = await r.json();
+                  }
+                  const m = compute(cachedBackup);
+                  overlay.innerHTML = renderHtml(m);
+                  const closeBtn = document.getElementById('dash-close-btn');
+                  if (closeBtn) closeBtn.addEventListener('click', closeDash);
+                  // Click supplier card -> close dashboard, click that tab in app
+            overlay.querySelectorAll('[data-supplier]').forEach(el => {
+                      el.addEventListener('click', () => {
+                                  const name = el.getAttribute('data-supplier');
+                                  closeDash();
+                                  const tabBtn = Array.from(document.querySelectorAll('.tab')).find(b => b.textContent.trim() === name);
+                                  if (tabBtn) tabBtn.click();
+                      });
+            });
+          } catch (e) {
+                  overlay.innerHTML = '<div class="dash-error">Gagal load dashboard:<br>' + escHtml(e.message) + '<br><br><span style="font-size:11px">Pastikan file ' + BACKUP_URL + ' ada di repo</span></div>';
+          }
+    }
+    function openDash() {
+          const overlay = document.getElementById('dashboard-overlay');
+          if (!overlay) return;
+          overlay.classList.add('show');
+          document.body.style.overflow = 'hidden';
+          loadAndRender();
+    }
+    function closeDash() {
+          const overlay = document.getElementById('dashboard-overlay');
+          if (!overlay) return;
+          overlay.classList.remove('show');
+          document.body.style.overflow = '';
+    }
+  
+   function setupTrigger() {
+         if (document.getElementById('dash-trigger-btn')) return;
+         const btn = document.createElement('button');
+         btn.id = 'dash-trigger-btn';
+         btn.className = 'dash-trigger';
+         btn.title = 'Dashboard';
+         btn.innerHTML = '▤';
+         btn.addEventListener('click', openDash);
+         document.body.appendChild(btn);
+         // Show trigger only when in main app screen
+      const update = () => {
+              const inApp = document.getElementById('screen-app') && document.getElementById('screen-app').classList.contains('active');
+              btn.classList.toggle('show', !!inApp);
+      };
+         update();
+         const obs = new MutationObserver(update);
+         document.querySelectorAll('.screen').forEach(s => obs.observe(s, { attributes: true, attributeFilter: ['class'] }));
+         // Add overlay container if missing
+      if (!document.getElementById('dashboard-overlay')) {
+              const ov = document.createElement('div');
+              ov.id = 'dashboard-overlay';
+              document.body.appendChild(ov);
+      }
+   }
+    if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', setupTrigger);
+    } else {
+          setupTrigger();
+    }
+    // Expose for debug
+   window.__poDash = { open: openDash, close: closeDash, refresh: () => { cachedBackup = null; loadAndRender(); } };
+})();
 </script>
 </body>
 </html>
