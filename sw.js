@@ -1,5 +1,5 @@
 // PO Catat - Service Worker (basic offline cache)
-const CACHE = 'po-catat-v5';
+const CACHE = 'po-catat-v6';
 const ASSETS = [
       './',
       './index.html',
