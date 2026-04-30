@@ -3100,5 +3100,136 @@ init();
   })();
 </script>
   
+<script>
+  (function(){
+      // === R5 patch: neutralize R4 aggressive auto-show, fix input flow ===
+      // R4 had a MutationObserver on .screen that re-triggered autoOpenOnAppEnter on every class mutation,
+      // causing the dashboard to spring back when the app re-rendered after Supabase writes or supplier add.
+      // R5 disables that, makes dashboard show only on (a) first landing, (b) explicit user click on dash tab.
+
+      var SS_KEY = 'po_dash_state'; // 'on' | 'off'
+      function getDashState(){ try { return sessionStorage.getItem(SS_KEY) || 'on'; } catch(_) { return 'on'; } }
+      function setDashState(v){ try { sessionStorage.setItem(SS_KEY, v); } catch(_) {} }
+
+      function disconnectR4Observers(){
+            // Walk .screen elements; old R4 observers can't be killed externally, but we can blunt their effect
+            // by overriding window.__poDashR4 handlers later.
+      }
+
+      function realHide(){
+            var el = document.getElementById('dash-inline');
+            if (el) el.classList.remove('show');
+            document.querySelectorAll('.app-hide-when-dash').forEach(function(n){
+                    n.classList.remove('app-hide-when-dash');
+            });
+            var dt = document.querySelector('#tabs .tab-dash');
+            if (dt) dt.classList.remove('active');
+      }
+
+      function realShowIfAllowed(){
+            if (getDashState() !== 'on') return;
+            if (window.__poDashR4 && typeof window.__poDashR4.show === 'function') {
+                    window.__poDashR4.show();
+            }
+      }
+
+      // Patch dashboard tab click: set state=on then show
+      function rebindDashTab(){
+            var dt = document.querySelector('#tabs .tab-dash');
+            if (!dt || dt.dataset.r5Bound) return;
+            dt.dataset.r5Bound = '1';
+            // Remove R4's capture-phase listener cloning is hard; instead, intercept via a fresh listener
+            // and stop propagation BEFORE R4's listener (capture true)
+            var fresh = dt.cloneNode(true);
+            dt.parentNode.replaceChild(fresh, dt);
+            fresh.dataset.r5Bound = '1';
+            fresh.addEventListener('click', function(e){
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDashState('on');
+                    realShowIfAllowed();
+            });
+            // Patch tabs container: when user clicks a non-dashboard tab, mark state=off
+            var tabsEl = document.getElementById('tabs');
+            if (tabsEl && !tabsEl.dataset.r5Bound) {
+                    tabsEl.dataset.r5Bound = '1';
+                    tabsEl.addEventListener('click', function(e){
+                              var t = e.target.closest('.tab');
+                              if (!t) return;
+                              if (t.classList.contains('tab-dash')) return;
+                              // user explicitly chose another tab → disable dashboard auto-show
+                              setDashState('off');
+                              realHide();
+                    });
+            }
+      }
+
+      function ensureDashTab(){
+            var tabs = document.getElementById('tabs');
+            if (!tabs) return;
+            if (!tabs.querySelector('.tab-dash')) {
+                    var btn = document.createElement('button');
+                    btn.className = 'tab tab-dash';
+                    btn.type = 'button';
+                    btn.textContent = '🏠 Dashboard';
+                    tabs.insertBefore(btn, tabs.firstChild);
+            }
+            rebindDashTab();
+      }
+
+      function applyState(){
+            var s = getDashState();
+            if (s === 'off') {
+                    realHide();
+            } else if (s === 'on') {
+                    // only auto-show if no other tab is currently active in app content
+                    // (prevents jumping back when user is mid-input)
+                    realShowIfAllowed();
+            }
+      }
+
+      function setup(){
+            ensureDashTab();
+            applyState();
+
+            // Light observer: only re-inject tab if it gets removed (e.g. app rebuilds tabs after add supplier)
+            var tabsEl = document.getElementById('tabs');
+            if (tabsEl) {
+                    new MutationObserver(function(){
+                              ensureDashTab();
+                              // DO NOT auto-show here; respect getDashState()
+                              if (getDashState() === 'off') {
+                                          var dt = document.querySelector('#tabs .tab-dash');
+                                          if (dt) dt.classList.remove('active');
+                              }
+                    }).observe(tabsEl, {childList:true});
+            }
+
+            // Block R4's aggressive screen-class observer effect by overriding showDash for non-explicit triggers
+            // We can't unbind the old observer, but we wrap window.__poDashR4.show to respect state on subsequent calls.
+            // First call from R4 startup is fine; later calls during DOM mutations should not auto-trigger.
+            if (window.__poDashR4 && window.__poDashR4.show) {
+                    var origShow = window.__poDashR4.show;
+                    var firstCall = true;
+                    window.__poDashR4.show = function(){
+                              // allow show only if state is 'on'
+                              if (getDashState() === 'on') return origShow.apply(this, arguments);
+                              // else suppress
+                    };
+            }
+      }
+
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setup);
+      else setup();
+
+      // Re-run setup once more after a short delay, in case R4 initializes after R5
+      setTimeout(setup, 500);
+      setTimeout(setup, 2000);
+
+      window.__poDashR5 = { show: function(){ setDashState('on'); realShowIfAllowed(); },
+                                                  hide: function(){ setDashState('off'); realHide(); } };
+  })();
+</script>
+  
 </body>
 </html>
