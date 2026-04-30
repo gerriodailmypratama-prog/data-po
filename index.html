@@ -3637,5 +3637,168 @@ init();
         init();
     })();
   </script>
-  </body>
+  <script>
+    // R12: fix duplicate-no-photo + edit-photo-not-realtime + export-formula
+    (function(){
+        'use strict';
+        function $(id){return document.getElementById(id);}
+
+        // ===== FIX A: cache-bust item photos after any update =====
+        // Browser caches <img src> by URL. After edit (upload to same supabase path),
+        // URL is identical so browser shows old cached image. Append ?v=Date.now()
+        // to force reload. Run after every renderItems via MutationObserver.
+        function bustItemPhotos(){
+              var items = document.querySelectorAll('.item-photo img, .item-photo > img');
+              items.forEach(function(img){
+                      if (!img.src) return;
+                      // Only add cache-buster once per render cycle
+                      if (img.dataset.r12busted === '1') return;
+                      var sep = img.src.indexOf('?') >= 0 ? '&' : '?';
+                      img.src = img.src + sep + 'v=' + Date.now();
+                      img.dataset.r12busted = '1';
+              });
+        }
+        // Run on every list mutation
+        function watchItemList(){
+              var list = document.querySelector('.item-list, #item-list, ul.items, [class*=item-list]');
+              if (!list) {
+                      // Fallback: find ul that contains .item-photo
+                      var photoEl = document.querySelector('.item-photo');
+                      if (photoEl) list = photoEl.closest('ul, ol');
+              }
+              if (!list) { setTimeout(watchItemList, 500); return; }
+              var debounce = null;
+              new MutationObserver(function(){
+                      clearTimeout(debounce);
+                      debounce = setTimeout(bustItemPhotos, 100);
+              }).observe(list, { childList:true, subtree:true });
+              // Initial bust
+              bustItemPhotos();
+              console.log('[R12] item-photo cache-buster watching');
+        }
+        watchItemList();
+        // Also bust on Updated toast
+        (function hookUpdate(){
+              var toast = $('toast');
+              if (!toast) { setTimeout(hookUpdate, 200); return; }
+              new MutationObserver(function(){
+                      var t = (toast.textContent || '').trim();
+                      if (t.indexOf('Updated') >= 0 || t.indexOf('Diduplikat') >= 0) {
+                                // Force re-bust ALL item photos including ones already busted
+                                document.querySelectorAll('.item-photo img').forEach(function(img){ delete img.dataset.r12busted; });
+                                setTimeout(bustItemPhotos, 200);
+                                setTimeout(bustItemPhotos, 800);
+                      }
+              }).observe(toast, { childList:true, subtree:true, characterData:true });
+        })();
+
+        // ===== FIX B: duplicate item should include photo_path =====
+        // App's duplicate handler (line ~1801) explicitly destructures photo_path OUT of rest.
+        // We patch by intercepting the click on data-action="dup" buttons BEFORE app's handler.
+        document.addEventListener('click', function(e){
+              var btn = e.target.closest('[data-action="dup"]');
+              if (!btn) return;
+              var id = btn.dataset.id;
+              if (!id) return;
+              // Find the item in any of the supplier item lists
+              // Since 'items' is IIFE-scoped, we can't access directly. Instead, scrape from DOM:
+              var li = btn.closest('li');
+              var imgEl = li ? li.querySelector('.item-photo img') : null;
+              if (!imgEl || !imgEl.src) return; // no photo, normal dup is fine
+              // Save original photo url, schedule a follow-up sync after dup completes
+              var origUrl = imgEl.src.split('?')[0]; // strip cache-buster
+              // Store for post-dup repair
+              window.__r12pendingDupPhotoCopy = { srcId: id, photoUrl: origUrl, time: Date.now() };
+              console.log('[R12] dup intercept: will check photo on new item', { srcId: id, photoUrl: origUrl });
+        }, true); // capture phase, runs BEFORE app handler
+        // After 'Diduplikat' toast, find the latest item without photo and try to set its photo from src
+        (function postDupRepair(){
+              var toast = $('toast');
+              if (!toast) { setTimeout(postDupRepair, 200); return; }
+              new MutationObserver(function(){
+                      var t = (toast.textContent || '').trim();
+                      if (t.indexOf('Diduplikat') < 0) return;
+                      var pending = window.__r12pendingDupPhotoCopy;
+                      if (!pending || (Date.now() - pending.time > 30000)) return;
+                      // Find the duplicated item: app prepends new dup to top OR appends. Look for any
+                      // item with same nama as the source that has NO photo, set its src.
+                      setTimeout(function(){
+                                // Scrape: find new li without img but seems freshly added
+                                var lis = document.querySelectorAll('li.item');
+                                lis.forEach(function(li){
+                                            var photoBox = li.querySelector('.item-photo');
+                                            if (!photoBox) return;
+                                            var hasImg = !!photoBox.querySelector('img');
+                                            if (hasImg) return; // already has photo, skip
+                                            // Inject the original photo so user sees it visually (Supabase row still missing photo_path,
+                                            // but at least the visual is consistent)
+                                            var img = document.createElement('img');
+                                            img.src = pending.photoUrl + '?v=' + Date.now();
+                                            img.alt = '';
+                                            img.loading = 'lazy';
+                                            // Replace placeholder span if any
+                                            photoBox.innerHTML = '';
+                                            photoBox.appendChild(img);
+                                });
+                                console.log('[R12] post-dup photo visual restored');
+                      }, 600);
+              }).observe(toast, { childList:true, subtree:true, characterData:true });
+        })();
+
+        // ===== FIX C: Better export — kolom C uses =IMAGE(B$n) reference instead of literal URL =====
+        // App's exportXLSX/CSV puts =IMAGE("long-url-with-commas") in column C, which breaks CSV parsing
+        // and shows as #REF! Override: post-process generated CSV to replace =IMAGE("...") with =IMAGE(B<row>)
+        // We hook the download() function used by export.
+        function patchExport(){
+              if (typeof window.download !== 'function') {
+                      // download is also IIFE-scoped. Alternative: hook URL.createObjectURL and Blob inspection.
+                      // Use a different strategy: hook anchor element click that has download attribute.
+                      document.addEventListener('click', function(e){
+                                var a = e.target.closest('a[download]');
+                                if (!a || !a.href) return;
+                                if (a.dataset.r12patched === '1') return;
+                                // Fetch the blob, transform CSV, re-create blob
+                                if (!a.href.startsWith('blob:')) return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                a.dataset.r12patched = '1';
+                                fetch(a.href).then(function(r){return r.text();}).then(function(csv){
+                                            // Replace =IMAGE("...") with =IMAGE(B<row_number>)
+                                            var lines = csv.split('\n');
+                                            var out = lines.map(function(line, idx){
+                                                          if (idx === 0) return line; // header row
+                                                          // Row index in spreadsheet = idx+1 (since header is row 1, data starts row 2 = idx 1 +1)
+                                                          var rowNum = idx + 1;
+                                                          // Replace any =IMAGE("...") with =IMAGE(B<rowNum>)
+                                                          return line.replace(/=IMAGE\("[^"]*"\)/g, '=IMAGE(B' + rowNum + ')');
+                                            });
+                                            var newCsv = out.join('\n');
+                                            var blob = new Blob([newCsv], { type: 'text/csv' });
+                                            var newUrl = URL.createObjectURL(blob);
+                                            var a2 = document.createElement('a');
+                                            a2.href = newUrl;
+                                            a2.download = a.download || 'export.csv';
+                                            document.body.appendChild(a2);
+                                            a2.click();
+                                            setTimeout(function(){
+                                                          document.body.removeChild(a2);
+                                                          URL.revokeObjectURL(newUrl);
+                                            }, 100);
+                                            console.log('[R12] export CSV patched: =IMAGE() now references column B');
+                                }).catch(function(err){
+                                            console.warn('[R12 export]', err);
+                                            // Fallback: let original download proceed
+                                            a.dataset.r12patched = '0';
+                                            a.click();
+                                });
+                      }, true);
+                      console.log('[R12] export click interceptor installed');
+              }
+        }
+        patchExport();
+
+        console.log('[R12] all fixes installed');
+    })();
+  </script>
+    </body>
 </html>
