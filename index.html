@@ -2841,5 +2841,264 @@ init();
    window.__poDash = { open: openDash, close: closeDash, refresh: () => { cachedBackup = null; loadAndRender(); } };
 })();
 </script>
+<script>
+  (function(){
+      // === Round 4 patch: dashboard as welcome page, logo refresh, avatar tap fix ===
+      var PATCH_CSS = ''+
+            '.dash-trigger{display:none !important;}'+
+            '.brand{cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;transition:opacity .15s ease;}'+
+            '.brand:hover{opacity:.7;}'+
+            '.brand:active{opacity:.5;}'+
+            '.user-chip{min-height:44px !important;padding:6px 10px !important;position:relative;z-index:5;}'+
+            '#user-avatar{width:32px !important;height:32px !important;}'+
+            '.tab.tab-dash{font-weight:600;}'+
+            '.tab.tab-dash.active{background:var(--accent-deep,#B85C38);color:#fff;}'+
+            '#dash-inline{display:none;padding:24px 20px 32px;}'+
+            '#dash-inline.show{display:block;}'+
+            '.app-hide-when-dash{display:none !important;}'+
+            '@media (prefers-color-scheme: dark){.tab.tab-dash.active{background:var(--accent-deep,#B85C38);color:#fff;}}';
+      var st = document.createElement('style');
+      st.id = 'po-r4-patch';
+      st.textContent = PATCH_CSS;
+      document.head.appendChild(st);
+
+      function fmt(n){
+            n = Math.round(n||0);
+            if (Math.abs(n) >= 1000000) return 'Rp '+(n/1000000).toFixed(1).replace(/\.0$/,'')+'jt';
+            if (Math.abs(n) >= 1000) return 'Rp '+(n/1000).toFixed(0)+'rb';
+            return 'Rp '+n;
+      }
+      function calcItem(it, s){
+            var kurs = +s.kurs||0, ongkir = +s.ongkir||0, margin = +s.margin||0, disc = +s.discount||0;
+            var qty = +it.qty||0, rmb = +it.rmb||0;
+            var modal_pc = rmb*kurs + ongkir;
+            var denom = (1-margin)*(1-disc); if (denom <= 0) denom = 1;
+            var tampil = modal_pc / denom;
+            var profit_pc = tampil - modal_pc;
+            return { modal_pc: modal_pc, tampil: tampil, profit_pc: profit_pc, qty: qty,
+                                 modal_total: modal_pc*qty, profit_total: profit_pc*qty };
+      }
+      function compute(b){
+            var sups = (b.suppliers||[]).map(function(name){
+                    var sd = (b.data||{})[name] || {};
+                    var settings = sd.settings || {};
+                    var items = sd.items || [];
+                    var modal=0, profit=0, pcs=0, models=items.length, prods=[];
+                    items.forEach(function(it){
+                              var c = calcItem(it, settings);
+                              modal += c.modal_total; profit += c.profit_total; pcs += c.qty;
+                              prods.push({name: it.nama, color: it.color, photo: it.photo, supplier: name,
+                                                              qty: c.qty, profit: c.profit_total, modal: c.modal_total});
+                    });
+                    return { name: name, models: models, pcs: pcs, modal: modal, profit: profit,
+                                           roi: modal>0 ? profit/modal : 0, products: prods };
+            });
+            sups.sort(function(a,b){return b.profit - a.profit;});
+            var totModal = sups.reduce(function(s,x){return s+x.modal;},0);
+            var totProfit = sups.reduce(function(s,x){return s+x.profit;},0);
+            var totPcs = sups.reduce(function(s,x){return s+x.pcs;},0);
+            var totModels = sups.reduce(function(s,x){return s+x.models;},0);
+            var topProds = sups.reduce(function(a,s){return a.concat(s.products);},[])
+                               .sort(function(a,b){return b.profit-a.profit;}).slice(0,5);
+            var maxProfit = Math.max.apply(null, sups.map(function(s){return s.profit;}).concat([1]));
+            return { suppliers: sups, totModal: totModal, totProfit: totProfit, totPcs: totPcs,
+                                 totModels: totModels, topProducts: topProds, maxProfit: maxProfit,
+                                 meta: b._meta || {}, workspace: (b._meta&&b._meta.workspace)||{} };
+      }
+      function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];}); }
+      function renderInline(m){
+            var name = (m.workspace.name||'gerrio').split(' ')[0];
+            var snap = m.meta.exported_at ? new Date(m.meta.exported_at) : null;
+            var snapStr = snap ? snap.toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase() : '';
+            var supRows = m.suppliers.map(function(s){
+                    var pct = m.maxProfit>0 ? Math.round(s.profit/m.maxProfit*100) : 0;
+                    return '<div class="dash-supplier" data-supplier="'+escapeHtml(s.name)+'">'+
+                              '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:8px;">'+
+                                '<strong style="font-family:Fraunces,serif;font-size:20px;">'+escapeHtml(s.name)+'</strong>'+
+                                '<span style="font-size:12px;color:var(--muted,#8A8273);">'+s.models+' model · '+s.pcs+' pcs</span>'+
+                              '</div>'+
+                              '<div class="dash-supplier-vals" style="font-family:Geist Mono,ui-monospace,monospace;font-size:13px;color:var(--ink-soft,#5a5448);margin-bottom:8px;">'+
+                                'Modal '+fmt(s.modal)+'  <span style="color:var(--profit,#3f8a4f);">+'+fmt(s.profit)+'</span>  '+Math.round(s.roi*100)+'% ROI'+
+                              '</div>'+
+                              '<div class="dash-bar-wrap" style="height:6px;background:var(--line-soft,#eee);border-radius:3px;overflow:hidden;">'+
+                                '<div class="dash-bar-fill" style="height:100%;width:'+pct+'%;background:var(--profit,#3f8a4f);"></div>'+
+                              '</div></div>';
+            }).join('');
+            var topRows = m.topProducts.map(function(p,i){
+                    var photo = p.photo ? '<img src="'+escapeHtml(p.photo)+'" style="width:44px;height:44px;border-radius:8px;object-fit:cover;">' :
+                                                  '<div style="width:44px;height:44px;border-radius:8px;background:var(--line-soft,#eee);"></div>';
+                    return '<div style="display:flex;align-items:center;gap:14px;padding:10px 0;border-top:1px solid var(--line-soft,#eee);">'+
+                              '<div style="font-family:Fraunces,serif;font-size:22px;color:var(--muted,#8A8273);width:24px;">'+(i+1)+'</div>'+
+                              photo+
+                              '<div style="flex:1;min-width:0;"><div style="font-weight:600;">'+escapeHtml(p.name||'-')+'</div>'+
+                                '<div style="font-size:12px;color:var(--muted,#8A8273);">'+escapeHtml(p.supplier)+' · '+escapeHtml(p.color||'-')+' · '+p.qty+' pcs</div></div>'+
+                              '<div style="font-family:Geist Mono,ui-monospace,monospace;font-size:13px;color:var(--profit,#3f8a4f);">'+fmt(p.profit)+'</div>'+
+                            '</div>';
+            }).join('');
+            var roiAll = m.totModal>0 ? Math.round(m.totProfit/m.totModal*100) : 0;
+            return ''+
+                    '<div style="max-width:760px;margin:0 auto;">'+
+                      '<div style="margin-bottom:8px;"><div style="font-family:Fraunces,serif;font-size:32px;line-height:1.1;">Halo, '+escapeHtml(name)+'</div>'+
+                      '<div style="color:var(--muted,#8A8273);font-size:13px;margin-top:6px;">'+m.suppliers.length+' supplier · '+m.totModels+' model · '+m.totPcs+' pcs'+
+                      (snapStr ? ' · Snapshot '+snapStr : '')+'</div></div>'+
+                      '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:20px 0 28px;">'+
+                        '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Total Modal</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;">'+fmt(m.totModal)+'</div></div>'+
+                        '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Total Profit</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;color:var(--profit,#3f8a4f);">+'+fmt(m.totProfit)+'</div></div>'+
+                        '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">ROI</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;">'+roiAll+'%</div></div>'+
+                        '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Total Pcs</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;">'+m.totPcs+'</div></div>'+
+                      '</div>'+
+                      '<h3 style="font-family:Fraunces,serif;font-size:18px;margin:0 0 12px;">Per Supplier</h3>'+
+                      '<div style="display:flex;flex-direction:column;gap:10px;">'+supRows+'</div>'+
+                      '<h3 style="font-family:Fraunces,serif;font-size:18px;margin:28px 0 0;">Top 5 Most Profitable</h3>'+
+                      '<div>'+topRows+'</div>'+
+                    '</div>';
+      }
+
+      var cached = null;
+      function loadBackup(){
+            if (cached) return Promise.resolve(cached);
+            return fetch('PO_cloud_backup_20260429.json',{cache:'no-cache'})
+              .then(function(r){if(!r.ok) throw new Error('http '+r.status); return r.json();})
+              .then(function(j){cached=j; return j;});
+      }
+
+      var SECTIONS_TO_HIDE = ['.settings','.items-section','.quick-add','.totals-bar'];
+
+      function ensureInline(){
+            var screenApp = document.getElementById('screen-app') || document.querySelector('.screen-app, .screen.active');
+            if (!screenApp) return null;
+            var el = document.getElementById('dash-inline');
+            if (!el){
+                    el = document.createElement('section');
+                    el.id = 'dash-inline';
+                    var header = screenApp.querySelector('.header');
+                    if (header && header.nextSibling) screenApp.insertBefore(el, header.nextSibling);
+                    else screenApp.appendChild(el);
+            }
+            return el;
+      }
+
+      function showDash(){
+            var el = ensureInline();
+            if (!el) return;
+            el.classList.add('show');
+            el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted,#8A8273);">Memuat dashboard…</div>';
+            SECTIONS_TO_HIDE.forEach(function(sel){
+                    document.querySelectorAll(sel).forEach(function(n){n.classList.add('app-hide-when-dash');});
+            });
+            // mark dashboard tab active, others inactive
+            var tabs = document.querySelectorAll('#tabs .tab');
+            tabs.forEach(function(t){
+                    if (t.classList.contains('tab-dash')) t.classList.add('active');
+                    else t.classList.remove('active');
+            });
+            loadBackup().then(function(b){
+                    var m = compute(b);
+                    el.innerHTML = renderInline(m);
+                    // bind supplier card click → switch to that tab
+                    el.querySelectorAll('.dash-supplier').forEach(function(card){
+                              card.style.cursor='pointer';
+                              card.addEventListener('click', function(){
+                                          var name = card.getAttribute('data-supplier');
+                                          var btn = Array.from(document.querySelectorAll('#tabs .tab')).find(function(t){return t.textContent.trim()===name;});
+                                          if (btn) btn.click();
+                              });
+                    });
+            }).catch(function(err){
+                    el.innerHTML = '<div style="padding:30px;color:var(--danger,#c25);">Gagal load backup: '+escapeHtml(err.message)+'</div>';
+            });
+      }
+      function hideDash(){
+            var el = document.getElementById('dash-inline');
+            if (el) el.classList.remove('show');
+            SECTIONS_TO_HIDE.forEach(function(sel){
+                    document.querySelectorAll(sel).forEach(function(n){n.classList.remove('app-hide-when-dash');});
+            });
+            var dashTab = document.querySelector('#tabs .tab-dash');
+            if (dashTab) dashTab.classList.remove('active');
+      }
+
+      function injectDashTab(){
+            var tabs = document.getElementById('tabs');
+            if (!tabs || tabs.querySelector('.tab-dash')) return;
+            var btn = document.createElement('button');
+            btn.className = 'tab tab-dash active';
+            btn.type = 'button';
+            btn.textContent = '🏠 Dashboard';
+            btn.addEventListener('click', function(e){
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showDash();
+            }, true);
+            tabs.insertBefore(btn, tabs.firstChild);
+            // when other tabs clicked, hide dash
+            tabs.addEventListener('click', function(e){
+                    var t = e.target.closest('.tab');
+                    if (!t) return;
+                    if (t.classList.contains('tab-dash')) return;
+                    // user clicked a real tab → hide dash
+                    hideDash();
+            }, false);
+      }
+
+      function bindLogoRefresh(){
+            var brand = document.querySelector('.brand');
+            if (!brand || brand.dataset.r4Bound) return;
+            brand.dataset.r4Bound = '1';
+            brand.title = 'Tap untuk refresh';
+            brand.addEventListener('click', function(){
+                    try{
+                              if (navigator.serviceWorker){
+                                          navigator.serviceWorker.getRegistrations().then(function(regs){
+                                                        regs.forEach(function(r){r.unregister();});
+                                                        if (window.caches) caches.keys().then(function(keys){
+                                                                        return Promise.all(keys.map(function(k){return caches.delete(k);}));
+                                                        }).then(function(){ location.reload(); });
+                                                        else location.reload();
+                                          });
+                              } else { location.reload(); }
+                    }catch(_){ location.reload(); }
+            });
+      }
+
+      function autoOpenOnAppEnter(){
+            // when screen-app becomes active and dash tab exists & active, show dash
+            var sa = document.getElementById('screen-app');
+            if (!sa) return;
+            if (sa.classList.contains('active')){
+                    var dt = document.querySelector('#tabs .tab-dash');
+                    if (dt && dt.classList.contains('active')) showDash();
+            }
+      }
+
+      function setup(){
+            injectDashTab();
+            bindLogoRefresh();
+            autoOpenOnAppEnter();
+            // observe screen changes to auto-show dashboard on first entry to app
+            var obs = new MutationObserver(function(){
+                    bindLogoRefresh();
+                    injectDashTab();
+                    autoOpenOnAppEnter();
+            });
+            document.querySelectorAll('.screen').forEach(function(s){
+                    obs.observe(s, {attributes:true, attributeFilter:['class']});
+            });
+            // also re-inject if tabs node gets rebuilt
+            var tabsEl = document.getElementById('tabs');
+            if (tabsEl){
+                    new MutationObserver(function(){ injectDashTab(); }).observe(tabsEl, {childList:true});
+            }
+            // remove old floating trigger if any
+            document.querySelectorAll('.dash-trigger').forEach(function(n){n.remove();});
+      }
+
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setup);
+      else setup();
+
+      window.__poDashR4 = { show: showDash, hide: hideDash };
+  })();
+</script>
+  
 </body>
 </html>
