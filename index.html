@@ -3344,5 +3344,66 @@ init();
   })();
 </script>
   
+<script>
+  (function(){
+      // === R7 patch: prevent black-flash by overriding .app-hide-when-dash CSS rule ===
+      // R3/R4 add .app-hide-when-dash to .settings/.items-section/.quick-add/.totals-bar
+      // when their MutationObserver fires (e.g. after Supabase write triggers DOM mutation).
+      // R6 watchTimer (1s interval) removes the class but creates 1s blank flash.
+      // R7 fixes via CSS-only: force .app-hide-when-dash to display:revert with !important + high specificity.
+
+      if (document.getElementById('po-r7-css')) return;
+      var st = document.createElement('style');
+      st.id = 'po-r7-css';
+      st.textContent = ''+
+            // Force always-visible for sections that R3/R4 try to hide
+            'html body .app-hide-when-dash{display:revert !important;}'+
+            'html body section.app-hide-when-dash{display:block !important;}'+
+            'html body details.app-hide-when-dash{display:block !important;}'+
+            'html body footer.app-hide-when-dash{display:block !important;}'+
+            // Keep dashboard remnants invisible
+            'html body #dashboard-overlay{display:none !important;}'+
+            'html body #dash-inline{display:none !important;}'+
+            'html body #tabs .tab-dash{display:none !important;}'+
+            'html body .dash-trigger{display:none !important;}';
+      document.head.appendChild(st);
+
+      // Also actively remove the class from elements (defense in depth)
+      function clean(){
+            document.querySelectorAll('.app-hide-when-dash').forEach(function(n){
+                    n.classList.remove('app-hide-when-dash');
+            });
+            document.querySelectorAll('.tab-dash').forEach(function(n){n.remove();});
+            var inline = document.getElementById('dash-inline'); if (inline) inline.remove();
+            var ov = document.getElementById('dashboard-overlay'); if (ov) ov.remove();
+      }
+      clean();
+
+      // High-frequency cleanup using requestAnimationFrame to eliminate flash
+      var rafActive = true;
+      function tick(){
+            if (!rafActive) return;
+            clean();
+            requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+      // Stop after 60s to avoid forever-loop
+      setTimeout(function(){ rafActive = false; }, 60000);
+
+      // Also intercept classList.add to block .app-hide-when-dash from being set
+      try {
+            var origAdd = DOMTokenList.prototype.add;
+            DOMTokenList.prototype.add = function(){
+                    var args = [].filter.call(arguments, function(c){
+                              return c !== 'app-hide-when-dash';
+                    });
+                    return origAdd.apply(this, args);
+            };
+      } catch(_) {}
+
+      window.__poR7 = { clean: clean };
+  })();
+</script>
+  
 </body>
 </html>
