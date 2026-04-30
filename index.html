@@ -3596,5 +3596,46 @@ init();
         console.log('[R10] all fixes installed');
     })();
   </script>
-</body>
+  <script>
+    // R11: photo reset via #toast DOM observer (showToast is IIFE-scoped, can't hook directly)
+    (function(){
+        'use strict';
+        function $(id){return document.getElementById(id);}
+        function resetPhotoUI(){
+              try {
+                      var wrap = $('photo-wrap');
+                      if (wrap) {
+                                var imgs = wrap.querySelectorAll('img');
+                                imgs.forEach(function(im){ im.remove(); });
+                                wrap.classList.remove('has-photo');
+                      }
+                      var fp = $('f-photo');
+                      if (fp) { try { fp.value = ''; } catch(_){} }
+                      var fq = $('f-qty');
+                      if (fq) fq.value = '';
+                      console.log('[R11] photo+qty cleared');
+              } catch(e) { console.warn('[R11]', e); }
+        }
+        function init(){
+              var toast = $('toast');
+              if (!toast) { setTimeout(init, 200); return; }
+              var lastTrigger = 0;
+              new MutationObserver(function(){
+                      var t = (toast.textContent || '').trim();
+                      if (!t) return;
+                      // Only react to add-success toast, debounce 500ms
+                      var now = Date.now();
+                      if (now - lastTrigger < 500) return;
+                      if (t.indexOf('Ditambah') >= 0) {
+                                lastTrigger = now;
+                                // Defer to next tick so app's own state changes finish first
+                                setTimeout(resetPhotoUI, 50);
+                      }
+              }).observe(toast, { childList:true, subtree:true, characterData:true });
+              console.log('[R11] toast observer installed');
+        }
+        init();
+    })();
+  </script>
+  </body>
 </html>
