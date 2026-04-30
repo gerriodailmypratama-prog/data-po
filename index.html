@@ -3231,5 +3231,118 @@ init();
   })();
 </script>
   
+<script>
+  (function(){
+      // === R6 patch: ROLLBACK dashboard. Keep only logo refresh + avatar tap fix. ===
+      // The dashboard patches (R3 overlay + R4 inline tab + R5 sessionStorage gate) caused:
+      //  - User kicked back to dashboard after submitting items
+      //  - Tab supplier sometimes triggered RENAME on first click (tab dashboard was active behind)
+      //  - Static snapshot not reflecting live Supabase data (misleading UX)
+      // R6 disables all dashboard behavior cleanly.
+
+      function killDashboard(){
+            // Remove injected dashboard tab
+            document.querySelectorAll('#tabs .tab-dash').forEach(function(n){n.remove();});
+            // Remove inline dashboard section
+            var inline = document.getElementById('dash-inline');
+            if (inline) inline.remove();
+            // Remove fullscreen overlay if any
+            var ov = document.getElementById('dashboard-overlay');
+            if (ov) ov.remove();
+            // Remove floating trigger button
+            document.querySelectorAll('.dash-trigger').forEach(function(n){n.remove();});
+            // Restore sections that R4 hid
+            document.querySelectorAll('.app-hide-when-dash').forEach(function(n){
+                    n.classList.remove('app-hide-when-dash');
+            });
+            // Neutralize R3/R4/R5 show functions
+            if (window.__poDash && window.__poDash.open) window.__poDash.open = function(){};
+            if (window.__poDashR4 && window.__poDashR4.show) window.__poDashR4.show = function(){};
+            if (window.__poDashR5 && window.__poDashR5.show) window.__poDashR5.show = function(){};
+      }
+
+      function bindLogoRefresh(){
+            var brand = document.querySelector('.brand');
+            if (!brand) return;
+            if (brand.dataset.r6Bound === '1') return;
+            brand.dataset.r6Bound = '1';
+            brand.style.cursor = 'pointer';
+            brand.style.userSelect = 'none';
+            brand.title = 'Tap untuk refresh';
+            // remove any old click listeners by cloning
+            var fresh = brand.cloneNode(true);
+            fresh.style.cursor = 'pointer';
+            fresh.style.userSelect = 'none';
+            fresh.title = 'Tap untuk refresh';
+            fresh.dataset.r6Bound = '1';
+            brand.parentNode.replaceChild(fresh, brand);
+            fresh.addEventListener('click', function(){
+                    try {
+                              if (navigator.serviceWorker) {
+                                          navigator.serviceWorker.getRegistrations().then(function(regs){
+                                                        var done = function(){ location.reload(); };
+                                                        var wait = regs.map(function(r){return r.unregister();});
+                                                        Promise.all(wait).then(function(){
+                                                                        if (window.caches) {
+                                                                                          caches.keys().then(function(keys){
+                                                                                                              return Promise.all(keys.map(function(k){return caches.delete(k);}));
+                                                                                            }).then(done, done);
+                                                                        } else done();
+                                                        }, done);
+                                          });
+                              } else {
+                                          location.reload();
+                              }
+                    } catch(_) { location.reload(); }
+            });
+      }
+
+      function injectKeepCSS(){
+            if (document.getElementById('po-r6-css')) return;
+            var st = document.createElement('style');
+            st.id = 'po-r6-css';
+            st.textContent = ''+
+                    // make sure dashboard related elements stay killed even if re-injected
+                    '.dash-trigger,#dash-inline,#dashboard-overlay,#tabs .tab-dash{display:none !important;}'+
+                    // avatar tap target fix
+                    '.user-chip{min-height:44px !important;padding:6px 10px !important;position:relative;z-index:5;}'+
+                    '#user-avatar{width:32px !important;height:32px !important;}'+
+                    // logo cursor
+                    '.brand{cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;}'+
+                    '.brand:active{opacity:.5;}';
+            document.head.appendChild(st);
+      }
+
+      function setup(){
+            injectKeepCSS();
+            killDashboard();
+            bindLogoRefresh();
+      }
+
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setup);
+      else setup();
+
+      // Re-run periodically to neutralize any late re-injection by R3/R4/R5
+      setTimeout(setup, 300);
+      setTimeout(setup, 1000);
+      setTimeout(setup, 3000);
+
+      // Watch tabs container: if .tab-dash gets re-injected by R4/R5 observers, kill it again
+      var watchTimer = setInterval(function(){
+            var dashTab = document.querySelector('#tabs .tab-dash');
+            if (dashTab) dashTab.remove();
+            var inline = document.getElementById('dash-inline');
+            if (inline) inline.remove();
+            document.querySelectorAll('.app-hide-when-dash').forEach(function(n){
+                    n.classList.remove('app-hide-when-dash');
+            });
+      }, 1000);
+      // Stop the aggressive cleanup after 30s when R4/R5 should have given up
+      setTimeout(function(){ clearInterval(watchTimer); }, 30000);
+
+      window.__poR6 = { setup: setup, killDashboard: killDashboard };
+  })();
+</script>
+  
 </body>
 </html>
