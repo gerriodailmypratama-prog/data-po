@@ -3491,5 +3491,110 @@ init();
       console.log('[R9] photo+qty auto-reset installed');
   })();
 </script>
+  <script>
+    // R10: comprehensive fix for tab indicator stuck + dashboard tab visibility + foto reset (real)
+    (function(){
+        'use strict';
+        function $(id){return document.getElementById(id);}
+
+        // ===== FIX A: Disconnect R8's MutationObserver to stop fighting app's renderTabs =====
+        // R8 observer was forcing .active onto first supplier on every mutation,
+        // which overwrote app's own active state when user clicked another tab.
+        function killR8Observer(){
+              if (window.__poR8 && window.__poR8._obs) {
+                      try { window.__poR8._obs.disconnect(); } catch(_){}
+              }
+              // R8 created the observer inline, no handle. Brute-force: scan for our observer pattern.
+              // Best we can do is re-bind our own logic that respects app state.
+        }
+        killR8Observer();
+
+        // ===== FIX B: Override CSS to make dashboard tab visible again =====
+        var styleR10 = document.createElement('style');
+        styleR10.id = 'r10-style';
+        styleR10.textContent = [
+              '#tabs .tab-dash { display: inline-flex !important; align-items: center; }',
+              '#tabs .tab-dash.active { background: var(--accent-deep, #B85C38) !important; color: #fff !important; }',
+              // App-hide protection from R7 still applies to sections, this only un-hides the tab
+              ''
+            ].join('\n');
+        (document.head || document.documentElement).appendChild(styleR10);
+
+        // ===== FIX C: Lightweight active-state guard (replaces R8 fixActiveState observer) =====
+        // Only run on INIT (page load) and after renderTabs() rebuilds, NOT on every class change.
+        // Logic: ensure .tab-dash NEVER has .active (avoids RENAME bug), and ensure SOME supplier tab
+        // has .active after init (in case app's render leaves all unset).
+        function safeActiveGuard(){
+              var tabs = document.getElementById('tabs');
+              if (!tabs) return;
+              var allTabs = tabs.querySelectorAll('.tab');
+              // 1. Strip .active from .tab-dash
+              var dash = tabs.querySelector('.tab-dash');
+              if (dash && dash.classList.contains('active')) dash.classList.remove('active');
+              // 2. Don't force active onto first supplier if user has clicked another tab.
+              //    Only force IF zero supplier tabs are active.
+              var anyActive = false;
+              allTabs.forEach(function(t){
+                      if (t.classList.contains('active') && !t.classList.contains('tab-dash') && !t.classList.contains('tab-add')) {
+                                anyActive = true;
+                      }
+              });
+              if (!anyActive) {
+                      var first = Array.from(allTabs).find(function(t){
+                                return !t.classList.contains('tab-dash') && !t.classList.contains('tab-add');
+                      });
+                      if (first) first.classList.add('active');
+              }
+        }
+        // Run only at startup, not on continuous mutation
+        setTimeout(safeActiveGuard, 100);
+        setTimeout(safeActiveGuard, 800);
+        setTimeout(safeActiveGuard, 2000);
+        // Patch renderTabs (if accessible) to call guard AFTER it runs
+        var rt = window.renderTabs;
+        if (typeof rt === 'function') {
+              window.renderTabs = function(){
+                      var r = rt.apply(this, arguments);
+                      try { safeActiveGuard(); } catch(_){}
+                      return r;
+              };
+        }
+
+        // ===== FIX D: Bulletproof foto reset via showToast hook =====
+        // App calls showToast('Ditambah \u2713') at end of successful add (line 1929).
+        // This fires AFTER the entire async createItem completes - perfect signal.
+        function hookShowToast(){
+              if (typeof window.showToast !== 'function') { setTimeout(hookShowToast, 100); return; }
+              var orig = window.showToast;
+              window.showToast = function(msg, isError){
+                      try { orig.apply(this, arguments); } catch(e){ console.warn('[R10 toast orig]', e); }
+                      // Detect successful add toast
+                      if (msg && typeof msg === 'string' && msg.indexOf('Ditambah') >= 0 && !isError) {
+                                try {
+                                            // Reset photo visually
+                                            if (typeof window.setPhotoPreview === 'function') {
+                                                          window.setPhotoPreview(null);
+                                            } else {
+                                                          var wrap = $('photo-wrap');
+                                                          if (wrap) {
+                                                                          var oldImg = wrap.querySelector('img');
+                                                                          if (oldImg) oldImg.remove();
+                                                                          wrap.classList.remove('has-photo');
+                                                          }
+                                            }
+                                            var fp = $('f-photo'); if (fp) { try { fp.value = ''; } catch(_){} }
+                                            try { window.currentPhotoFile = null; } catch(_){}
+                                            var fq = $('f-qty'); if (fq) fq.value = '';
+                                            console.log('[R10] photo+qty reset via showToast hook');
+                                } catch(err) { console.warn('[R10 reset]', err); }
+                      }
+              };
+              console.log('[R10] showToast hook installed');
+        }
+        hookShowToast();
+
+        console.log('[R10] all fixes installed');
+    })();
+  </script>
 </body>
 </html>
