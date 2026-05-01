@@ -246,6 +246,50 @@ body.no-bottom { padding-bottom: 0; }
 }
 .tab-add { width: 36px; padding: 10px 0 12px; color: var(--accent); font-size: 18px; }
 
+    /* === SUPPLIER DROPDOWN (R13) === */
+    .sup-select {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 16px 12px;
+      width: 100%; box-sizing: border-box;
+    }
+    .sup-select-dd {
+      flex: 1 1 auto; min-width: 0;
+      background: var(--surface, #1c1815);
+      color: var(--ink, #f5f1e8);
+      border: 1px solid var(--line, #3a342d);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit; font-size: 15px; font-weight: 600;
+      font-family: 'Geist', sans-serif;
+      letter-spacing: -0.01em;
+      cursor: pointer;
+      appearance: none; -webkit-appearance: none;
+      background-image: linear-gradient(45deg, transparent 50%, var(--accent, #d97757) 50%), linear-gradient(135deg, var(--accent, #d97757) 50%, transparent 50%);
+      background-position: calc(100% - 18px) center, calc(100% - 12px) center;
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+      padding-right: 36px;
+      transition: border-color .15s, color .15s;
+    }
+    .sup-select-dd:hover { border-color: var(--accent, #d97757); }
+    .sup-select-dd:focus { outline: none; border-color: var(--accent, #d97757); }
+    .sup-btn {
+      flex: 0 0 auto;
+      width: 40px; height: 40px;
+      background: transparent;
+      border: 1px solid var(--line, #3a342d);
+      border-radius: 10px;
+      color: var(--accent, #d97757);
+      font-size: 18px; font-weight: 600;
+      cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: background .15s, border-color .15s;
+    }
+    .sup-btn:hover { background: rgba(217,119,87,0.08); border-color: var(--accent, #d97757); }
+    .sup-btn:active { transform: scale(0.96); }
+    .sup-btn-rename { font-size: 16px; }
+    #tabs .tab.tab-dash { display: none !important; }
+
 /* === SETTINGS === */
 .settings {
   margin: 16px 16px 0;
@@ -1131,6 +1175,10 @@ body.no-bottom { padding-bottom: 0; }
         <div class="suffix" data-suffix="%"><input type="number" inputmode="decimal" id="set-margin" step="0.5"></div>
       </div>
       <div class="field">
+        <label>Tanggal PO</label>
+        <input type="date" id="set-tanggal">
+      </div>
+      <div class="field">
         <label>Display discount</label>
         <div class="suffix" data-suffix="%"><input type="number" inputmode="decimal" id="set-discount" step="0.5"></div>
       </div>
@@ -1250,7 +1298,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 // STATE
 // =================================================================
 const ADMIN_FEE = 0.22;
-const DEFAULT_SETTINGS = { kurs: 2564, ongkir: 25000, margin: 0.25, discount: 0.15 };
+const DEFAULT_SETTINGS = { kurs: 2564, ongkir: 25000, margin: 0.25, discount: 0.15, tanggal_po: '' };
 
 let user = null;
 let workspace = null;
@@ -1646,24 +1694,56 @@ function renderUserChip() {
 function renderTabs() {
   const root = $('tabs');
   root.innerHTML = '';
+  if (!suppliers.length) return;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'sup-select';
+
+  const cur = suppliers.find(s => s.id === currentSupplierId) || suppliers[0];
+  if (cur && cur.id !== currentSupplierId) currentSupplierId = cur.id;
+
+  const sel = document.createElement('select');
+  sel.className = 'sup-select-dd';
+  sel.setAttribute('aria-label', 'Pilih supplier');
   suppliers.forEach(s => {
-    const b = document.createElement('button');
-    b.className = 'tab' + (s.id === currentSupplierId ? ' active' : '');
-    b.textContent = s.name;
-    b.onclick = () => {
-      if (s.id === currentSupplierId) { promptRenameSupplier(s); return; }
-      currentSupplierId = s.id;
-      cancelEdit();
-      renderAll();
-    };
-    b.oncontextmenu = (e) => { e.preventDefault(); promptRenameSupplier(s); };
-    root.appendChild(b);
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = s.name;
+    if (s.id === currentSupplierId) opt.selected = true;
+    sel.appendChild(opt);
   });
-  const add = document.createElement('button');
-  add.className = 'tab tab-add';
-  add.textContent = '+';
-  add.onclick = promptAddSupplier;
-  root.appendChild(add);
+  sel.onchange = () => {
+    currentSupplierId = sel.value;
+    cancelEdit();
+    const dash = document.getElementById('dash-inline');
+    if (dash) dash.classList.remove('show');
+    document.querySelectorAll('.settings, .items-section, .quick-add, .totals-bar').forEach(n => n.classList.remove('app-hide-when-dash'));
+    const dashTab = document.querySelector('#tabs .tab-dash');
+    if (dashTab) dashTab.classList.remove('active');
+    renderAll();
+  };
+
+  const renameBtn = document.createElement('button');
+  renameBtn.type = 'button';
+  renameBtn.className = 'sup-btn sup-btn-rename';
+  renameBtn.title = 'Rename / Hapus supplier';
+  renameBtn.textContent = '✎';
+  renameBtn.onclick = () => {
+    const c = suppliers.find(s => s.id === currentSupplierId);
+    if (c) promptRenameSupplier(c);
+  };
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'sup-btn sup-btn-add';
+  addBtn.title = 'Tambah supplier';
+  addBtn.textContent = '+';
+  addBtn.onclick = promptAddSupplier;
+
+  wrap.appendChild(sel);
+  wrap.appendChild(renameBtn);
+  wrap.appendChild(addBtn);
+  root.appendChild(wrap);
 }
 
 function renderSettings() {
@@ -1674,6 +1754,7 @@ function renderSettings() {
   $('set-ongkir').value = s.ongkir;
   $('set-margin').value = +(s.margin * 100).toFixed(2);
   $('set-discount').value = +(s.discount * 100).toFixed(2);
+  $('set-tanggal').value = s.tanggal_po || '';
 }
 
 function renderItems() {
@@ -1947,16 +2028,17 @@ $('add-form').addEventListener('submit', async (e) => {
 // SETTINGS HANDLERS (debounced save)
 // =================================================================
 let settingsTimer = null;
-['set-kurs', 'set-ongkir', 'set-margin', 'set-discount'].forEach(id => {
+['set-kurs', 'set-ongkir', 'set-margin', 'set-discount', 'set-tanggal'].forEach(id => {
   $(id).addEventListener('input', e => {
     const cur = getCurrentSupplier();
     if (!cur) return;
-    const v = parseFloat(e.target.value) || 0;
+    const v = (id === 'set-tanggal') ? 0 : (parseFloat(e.target.value) || 0);
     const settings = { ...cur.settings };
     if (id === 'set-kurs') settings.kurs = v;
     if (id === 'set-ongkir') settings.ongkir = v;
     if (id === 'set-margin') settings.margin = v / 100;
     if (id === 'set-discount') settings.discount = v / 100;
+    if (id === 'set-tanggal') settings.tanggal_po = e.target.value || '';
     cur.settings = settings;
     renderItems();
     renderTotals();
@@ -1979,8 +2061,18 @@ async function promptAddSupplier() {
     showToast('Nama udah dipakai');
     return;
   }
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth()+1).padStart(2,'0');
+  const dd = String(today.getDate()).padStart(2,'0');
+  const defaultDate = yyyy + '-' + mm + '-' + dd;
+  const tgl = prompt('Tanggal PO (YYYY-MM-DD):', defaultDate);
+  const tanggal_po = (tgl && /^\d{4}-\d{2}-\d{2}$/.test(tgl.trim())) ? tgl.trim() : defaultDate;
   const created = await createSupplier(t);
   if (created) {
+    const newSettings = { ...(created.settings || DEFAULT_SETTINGS), tanggal_po };
+    await updateSupplier(created.id, { settings: newSettings });
+    created.settings = newSettings;
     currentSupplierId = created.id;
     cancelEdit();
     renderAll();
