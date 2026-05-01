@@ -2814,7 +2814,7 @@ init();
    function compute(backup) {
          const suppliers = [];
          const allProducts = [];
-         let totalModal = 0, totalTampil = 0, totalProfit = 0, totalQty = 0, totalItems = 0;
+         let totalModal = 0, totalTampil = 0, totalProfit = 0, totalQty = 0, totalRmb = 0, totalItems = 0;
          const data = backup.data || {};
          for (const name of (backup.suppliers || Object.keys(data))) {
                  const sup = data[name];
@@ -2823,7 +2823,7 @@ init();
                  let sM=0, sT=0, sP=0, sQ=0;
                  for (const it of items) {
                            const c = calcItem(it, sup.settings || {});
-                           sM += c.modal_row; sT += c.tampil_row; sP += c.profit_row; sQ += (+it.qty||0);
+                           sM += c.modal_row; sT += c.tampil_row; sP += c.profit_row; sQ += (+it.qty||0); totalRmb += (+it.qty||0)*(+it.rmb||0);
                            allProducts.push({
                                        supplier: name,
                                        name: it.nama || '?',
@@ -2843,7 +2843,7 @@ init();
          const avgRoi = totalModal > 0 ? (totalProfit / totalModal) * 100 : 0;
          suppliers.sort((a,b) => b.profit - a.profit);
          const topProducts = allProducts.sort((a,b) => b.profit_row - a.profit_row).slice(0, 5);
-         return { suppliers, totalModal, totalTampil, totalProfit, totalQty, totalItems, avgRoi, topProducts, exportedAt: (backup._meta && backup._meta.exported_at) || null, workspaceName: (backup._meta && backup._meta.workspace) || '' };
+         return { suppliers, totalModal, totalTampil, totalProfit, totalQty, totalRmb, totalItems, avgRoi, topProducts, exportedAt: (backup._meta && backup._meta.exported_at) || null, workspaceName: (backup._meta && backup._meta.workspace) || '' };
    }
   
    function escHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -2895,10 +2895,10 @@ init();
                                                            <div class="dash-greeting">Halo, ${greetingName}</div>
                                                                    <div class="dash-greeting-sub">${m.suppliers.length} supplier · ${m.totalItems} model · ${fmtNum(m.totalQty)} pcs<span class="dash-stale">snapshot ${dateStr}</span></div>
                                                                            <div class="dash-kpi-grid">
-                                                                                     <div class="dash-kpi"><div class="dash-kpi-label">Total Modal</div><div class="dash-kpi-val">${fmt(m.totalModal)}</div></div>
-                                                                                               <div class="dash-kpi"><div class="dash-kpi-label">Total Profit</div><div class="dash-kpi-val profit">+${fmt(m.totalProfit)}</div></div>
-                                                                                                         <div class="dash-kpi"><div class="dash-kpi-label">ROI Rata²</div><div class="dash-kpi-val">${m.avgRoi.toFixed(0)}%</div></div>
-                                                                                                                   <div class="dash-kpi"><div class="dash-kpi-label">Total Pcs</div><div class="dash-kpi-val">${fmtNum(m.totalQty)}</div><div class="dash-kpi-sub">harga jual ${fmt(m.totalTampil)}</div></div>
+                                                                                     <div class="dash-kpi"><div class="dash-kpi-label">Supplier</div><div class="dash-kpi-val">${fmtNum(m.suppliers.length)}</div></div>
+                                                                                               <div class="dash-kpi"><div class="dash-kpi-label">Total Pcs</div><div class="dash-kpi-val">${fmtNum(m.totalQty)}</div></div>
+                                                                                                         <div class="dash-kpi"><div class="dash-kpi-label">Total RMB</div><div class="dash-kpi-val">¥${fmtNum(Math.round(m.totalRmb))}</div></div>
+                                                                                                                   <div class="dash-kpi"><div class="dash-kpi-label">Total Rupiah</div><div class="dash-kpi-val">${fmt(m.totalModal)}</div></div>
                                                                                                                            </div>
                                                                                                                                    <div class="dash-section-title">Per Supplier</div>
                                                                                                                                            ${supplierRows || '<div class="dash-empty">Belum ada supplier</div>'}
@@ -3025,26 +3025,26 @@ init();
                     var sd = (b.data||{})[name] || {};
                     var settings = sd.settings || {};
                     var items = sd.items || [];
-                    var modal=0, profit=0, pcs=0, models=items.length, prods=[];
+                    var modal=0, profit=0, pcs=0, rmb=0, models=items.length, prods=[];
                     items.forEach(function(it){
                               var c = calcItem(it, settings);
-                              modal += c.modal_total; profit += c.profit_total; pcs += c.qty;
+                              modal += c.modal_total; profit += c.profit_total; pcs += c.qty; rmb += (+it.qty||0)*(+it.rmb||0);
                               prods.push({name: it.nama, color: it.color, photo: it.photo, supplier: name,
                                                               qty: c.qty, profit: c.profit_total, modal: c.modal_total});
                     });
-                    return { name: name, models: models, pcs: pcs, modal: modal, profit: profit,
+                    return { name: name, models: models, pcs: pcs, rmb: rmb, modal: modal, profit: profit,
                                            roi: modal>0 ? profit/modal : 0, products: prods };
             });
             sups.sort(function(a,b){return b.profit - a.profit;});
             var totModal = sups.reduce(function(s,x){return s+x.modal;},0);
             var totProfit = sups.reduce(function(s,x){return s+x.profit;},0);
             var totPcs = sups.reduce(function(s,x){return s+x.pcs;},0);
-            var totModels = sups.reduce(function(s,x){return s+x.models;},0);
+            var totModels = sups.reduce(function(s,x){return s+x.models;},0); var totRmb = sups.reduce(function(s,x){return s+x.rmb;},0);
             var topProds = sups.reduce(function(a,s){return a.concat(s.products);},[])
                                .sort(function(a,b){return b.profit-a.profit;}).slice(0,5);
             var maxProfit = Math.max.apply(null, sups.map(function(s){return s.profit;}).concat([1]));
             return { suppliers: sups, totModal: totModal, totProfit: totProfit, totPcs: totPcs,
-                                 totModels: totModels, topProducts: topProds, maxProfit: maxProfit,
+                                 totModels: totModels, totRmb: totRmb, topProducts: topProds, maxProfit: maxProfit,
                                  meta: b._meta || {}, workspace: (b._meta&&b._meta.workspace)||{} };
       }
       function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];}); }
@@ -3084,11 +3084,10 @@ init();
                       '<div style="color:var(--muted,#8A8273);font-size:13px;margin-top:6px;">'+m.suppliers.length+' supplier · '+m.totModels+' model · '+m.totPcs+' pcs'+
                       (snapStr ? ' · Snapshot '+snapStr : '')+'</div></div>'+
                       '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:20px 0 28px;">'+
-                        '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Total Modal</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;">'+fmt(m.totModal)+'</div></div>'+
-                        '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Total Profit</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;color:var(--profit,#3f8a4f);">+'+fmt(m.totProfit)+'</div></div>'+
-                        '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">ROI</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;">'+roiAll+'%</div></div>'+
+                        '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Supplier</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;">'+m.suppliers.length+'</div></div>'+
                         '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Total Pcs</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;">'+m.totPcs+'</div></div>'+
-                      '</div>'+
+                        '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Total RMB</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;">'+'¥'+Math.round(m.totRmb).toLocaleString('id-ID')+''</div></div>'+
+                        '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Total Rupiah</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;">'+fmt(m.totModal)+'</div></div>'+                      '</div>'+
                       '<h3 style="font-family:Fraunces,serif;font-size:18px;margin:0 0 12px;">Per Supplier</h3>'+
                       '<div style="display:flex;flex-direction:column;gap:10px;">'+supRows+'</div>'+
                       '<h3 style="font-family:Fraunces,serif;font-size:18px;margin:28px 0 0;">Top 5 Most Profitable</h3>'+
