@@ -1705,14 +1705,29 @@ function renderTabs() {
   const sel = document.createElement('select');
   sel.className = 'sup-select-dd';
   sel.setAttribute('aria-label', 'Pilih supplier');
+  const dashOpt = document.createElement('option');
+  dashOpt.value = '__dash__';
+  dashOpt.textContent = '🏠 Dashboard';
+  const dashShown = !!(document.getElementById('dash-inline') && document.getElementById('dash-inline').classList.contains('show'));
+  if (dashShown) dashOpt.selected = true;
+  sel.appendChild(dashOpt);
   suppliers.forEach(s => {
     const opt = document.createElement('option');
     opt.value = s.id;
     opt.textContent = s.name;
-    if (s.id === currentSupplierId) opt.selected = true;
+    if (!dashShown && s.id === currentSupplierId) opt.selected = true;
     sel.appendChild(opt);
   });
   sel.onchange = () => {
+    if (sel.value === '__dash__') {
+      if (typeof window.showDash === 'function') {
+        window.showDash();
+      } else {
+        const dashTab = document.querySelector('#tabs .tab-dash');
+        if (dashTab) dashTab.click();
+      }
+      return;
+    }
     currentSupplierId = sel.value;
     cancelEdit();
     const dash = document.getElementById('dash-inline');
@@ -1851,6 +1866,7 @@ function renderAll() {
   if (!suppliers.length) {
     showScreen('screen-onboarding');
     setTimeout(() => $('ob-name').focus(), 100);
+    publishLiveSnapshot();
     return;
   }
   showScreen('screen-app');
@@ -1859,7 +1875,41 @@ function renderAll() {
   renderSettings();
   renderItems();
   renderTotals();
+  publishLiveSnapshot();
 }
+
+function publishLiveSnapshot() {
+  try {
+    const data = {};
+    const supplierNames = [];
+    for (const s of suppliers) {
+      supplierNames.push(s.name);
+      const itList = (items[s.id] || []).map(it => ({
+        nama: it.nama, color: it.color, size: it.size,
+        qty: it.qty, rmb: it.rmb, box: it.box,
+        photo: it.photo_path ? getPhotoUrl(it.photo_path) : null,
+        photo_path: it.photo_path,
+        id: it.id, supplier_id: it.supplier_id,
+      }));
+      data[s.name] = { items: itList, settings: s.settings || DEFAULT_SETTINGS, id: s.id };
+    }
+    window.__poLiveData = {
+      suppliers: supplierNames, data,
+      _meta: { exported_at: new Date().toISOString(), workspace: (workspace && workspace.name) || '', live: true }
+    };
+    window.dispatchEvent(new CustomEvent('po:datachange', { detail: { source: 'local' } }));
+  } catch (e) { console.warn('[publishLiveSnapshot]', e); }
+}
+
+window.__poApp = {
+  get suppliers(){ return suppliers; },
+  get items(){ return items; },
+  get currentSupplierId(){ return currentSupplierId; },
+  set currentSupplierId(v){ currentSupplierId = v; },
+  get workspace(){ return workspace; },
+  renderAll, renderItems, renderTotals,
+  cancelEdit,
+};
 
 // =================================================================
 // ITEM ACTIONS
@@ -3048,6 +3098,7 @@ init();
 
       var cached = null;
       function loadBackup(){
+            if (window.__poLiveData) return Promise.resolve(window.__poLiveData);
             if (cached) return Promise.resolve(cached);
             return fetch('PO_cloud_backup_20260429.json',{cache:'no-cache'})
               .then(function(r){if(!r.ok) throw new Error('http '+r.status); return r.json();})
@@ -3087,11 +3138,17 @@ init();
             loadBackup().then(function(b){
                     var m = compute(b);
                     el.innerHTML = renderInline(m);
-                    // bind supplier card click → switch to that tab
+                    var closeBtn = document.getElementById('dash-close-btn');
+                    if (closeBtn) closeBtn.addEventListener('click', function(){ hideDash(); });
                     el.querySelectorAll('.dash-supplier').forEach(function(card){
                               card.style.cursor='pointer';
                               card.addEventListener('click', function(){
                                           var name = card.getAttribute('data-supplier');
+                                          var dd = document.querySelector('.sup-select-dd');
+                                          if (dd) {
+                                                  var opt = Array.from(dd.options).find(function(o){return o.text===name;});
+                                                  if (opt) { dd.value = opt.value; dd.dispatchEvent(new Event('change')); return; }
+                                          }
                                           var btn = Array.from(document.querySelectorAll('#tabs .tab')).find(function(t){return t.textContent.trim()===name;});
                                           if (btn) btn.click();
                               });
@@ -3108,7 +3165,38 @@ init();
             });
             var dashTab = document.querySelector('#tabs .tab-dash');
             if (dashTab) dashTab.classList.remove('active');
+            var dd = document.querySelector('.sup-select-dd');
+            if (dd && window.__poApp) {
+              var cur = window.__poApp.currentSupplierId;
+              if (cur) dd.value = cur;
+            }
       }
+      window.showDash = showDash;
+      window.hideDash = hideDash;
+      window.addEventListener('po:datachange', function(){
+        var el = document.getElementById('dash-inline');
+        if (el && el.classList.contains('show')) {
+          var sc = el.scrollTop;
+          loadBackup().then(function(b){
+            var m = compute(b);
+            el.innerHTML = renderInline(m);
+            el.scrollTop = sc;
+            el.querySelectorAll('.dash-supplier').forEach(function(card){
+              card.style.cursor='pointer';
+              card.addEventListener('click', function(){
+                var name = card.getAttribute('data-supplier');
+                var dd = document.querySelector('.sup-select-dd');
+                if (dd) {
+                  var opt = Array.from(dd.options).find(function(o){return o.text===name;});
+                  if (opt) { dd.value = opt.value; dd.dispatchEvent(new Event('change')); }
+                }
+              });
+            });
+            var btn = document.getElementById('dash-close-btn');
+            if (btn) btn.onclick = function(){ if (typeof window.hideDash==='function') window.hideDash(); };
+          }).catch(function(e){ console.warn('[dash refresh]', e); });
+        }
+      });
 
       function injectDashTab(){
             var tabs = document.getElementById('tabs');
