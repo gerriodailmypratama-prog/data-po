@@ -3013,11 +3013,14 @@ init();
       function calcItem(it, s){
             var kurs = +s.kurs||0, ongkir = +s.ongkir||0, margin = +s.margin||0, disc = +s.discount||0;
             var qty = +it.qty||0, rmb = +it.rmb||0;
-            var modal_pc = rmb*kurs + ongkir;
+            var barang_pc = rmb*kurs;
+            var modal_pc = barang_pc + ongkir;
             var denom = (1-margin)*(1-disc); if (denom <= 0) denom = 1;
             var tampil = modal_pc / denom;
             var profit_pc = tampil - modal_pc;
             return { modal_pc: modal_pc, tampil: tampil, profit_pc: profit_pc, qty: qty,
+                                 barang_pc: barang_pc, ongkir_pc: ongkir,
+                                 barang_total: barang_pc*qty, ongkir_total: ongkir*qty,
                                  modal_total: modal_pc*qty, profit_total: profit_pc*qty };
       }
       function compute(b){
@@ -3025,14 +3028,16 @@ init();
                     var sd = (b.data||{})[name] || {};
                     var settings = sd.settings || {};
                     var items = sd.items || [];
-                    var modal=0, profit=0, pcs=0, rmb=0, models=items.length, prods=[];
+                    var modal=0, profit=0, pcs=0, rmb=0, barang=0, ongkir=0, models=items.length, prods=[];
                     items.forEach(function(it){
                               var c = calcItem(it, settings);
                               modal += c.modal_total; profit += c.profit_total; pcs += c.qty; rmb += (+it.qty||0)*(+it.rmb||0);
+                              barang += c.barang_total||0; ongkir += c.ongkir_total||0;
                               prods.push({name: it.nama, color: it.color, photo: it.photo, supplier: name,
                                                               qty: c.qty, profit: c.profit_total, modal: c.modal_total});
                     });
                     return { name: name, models: models, pcs: pcs, rmb: rmb, modal: modal, profit: profit,
+                                           barang: barang, ongkir: ongkir,
                                            roi: modal>0 ? profit/modal : 0, products: prods };
             });
             sups.sort(function(a,b){return b.profit - a.profit;});
@@ -3040,11 +3045,13 @@ init();
             var totProfit = sups.reduce(function(s,x){return s+x.profit;},0);
             var totPcs = sups.reduce(function(s,x){return s+x.pcs;},0);
             var totModels = sups.reduce(function(s,x){return s+x.models;},0); var totRmb = sups.reduce(function(s,x){return s+x.rmb;},0);
+            var totBarang = sups.reduce(function(s,x){return s+(x.barang||0);},0);
+            var totOngkir = sups.reduce(function(s,x){return s+(x.ongkir||0);},0);
             var topProds = sups.reduce(function(a,s){return a.concat(s.products);},[])
                                .sort(function(a,b){return b.profit-a.profit;}).slice(0,5);
             var maxProfit = Math.max.apply(null, sups.map(function(s){return s.profit;}).concat([1]));
             return { suppliers: sups, totModal: totModal, totProfit: totProfit, totPcs: totPcs,
-                                 totModels: totModels, totRmb: totRmb, topProducts: topProds, maxProfit: maxProfit,
+                                 totModels: totModels, totRmb: totRmb, totBarang: totBarang, totOngkir: totOngkir, topProducts: topProds, maxProfit: maxProfit,
                                  meta: b._meta || {}, workspace: (b._meta&&b._meta.workspace)||{} };
       }
       function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, function(c){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];}); }
@@ -3087,7 +3094,9 @@ init();
                         '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Supplier</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;">'+m.suppliers.length+'</div></div>'+
                         '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Total Pcs</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;">'+m.totPcs+'</div></div>'+
                         '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Total RMB</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;">'+'¥'+Math.round(m.totRmb).toLocaleString('id-ID')+'</div></div>'+
-                        '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Total Rupiah</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;">'+fmt(m.totModal)+'</div></div>'+                      '</div>'+
+                        '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Total Belanja Barang</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;">'+fmt(m.totBarang||0)+'</div></div>'+
+                                          '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Total Ongkos Kirim</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;">'+fmt(m.totOngkir||0)+'</div></div>'+
+                                          '<div style="padding:14px;border:1px solid var(--line-soft,#eee);border-radius:12px;background:var(--accent-soft,#fff7f0);"><div style="font-size:11px;color:var(--muted,#8A8273);letter-spacing:.05em;text-transform:uppercase;">Total All</div><div style="font-family:Geist Mono,ui-monospace,monospace;font-size:20px;margin-top:4px;color:var(--accent-deep,#B85C38);">'+fmt(m.totModal)+'</div></div>'+                      '</div>'+
                       '<h3 style="font-family:Fraunces,serif;font-size:18px;margin:0 0 12px;">Per Supplier</h3>'+
                       '<div style="display:flex;flex-direction:column;gap:10px;">'+supRows+'</div>'+
                       '<h3 style="font-family:Fraunces,serif;font-size:18px;margin:28px 0 0;">Top 5 Most Profitable</h3>'+
@@ -3198,6 +3207,8 @@ init();
       });
 
       function injectDashTab(){
+            // R13: dashboard tab disabled — accessed via supplier dropdown only
+            return;
             var tabs = document.getElementById('tabs');
             if (!tabs || tabs.querySelector('.tab-dash')) return;
             var btn = document.createElement('button');
@@ -3692,8 +3703,8 @@ init();
         var styleR10 = document.createElement('style');
         styleR10.id = 'r10-style';
         styleR10.textContent = [
-              '#tabs .tab-dash { display: inline-flex !important; align-items: center; }',
-              '#tabs .tab-dash.active { background: var(--accent-deep, #B85C38) !important; color: #fff !important; }',
+              '#tabs .tab-dash { display: none !important; }',
+              '#tabs .tab-dash.active { display: none !important; }',
               // App-hide protection from R7 still applies to sections, this only un-hides the tab
               ''
             ].join('\n');
