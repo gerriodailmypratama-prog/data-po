@@ -363,6 +363,14 @@ body.no-bottom { padding-bottom: 0; }
 
 /* === ITEM LIST === */
 .items-section { padding: 0 16px; margin-top: 24px; }
+    .item-search-wrap { margin-bottom: 10px; padding: 0 4px; position: relative; }
+    .item-search { width: 100%; box-sizing: border-box; padding: 10px 36px 10px 36px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 14px; font-family: 'Geist', sans-serif; transition: border-color .15s, box-shadow .15s; }
+    .item-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(194,92,58,.15); }
+    .item-search::placeholder { color: var(--muted); }
+    .item-search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; font-size: 14px; }
+    .item-search-clear { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px 8px; font-size: 16px; line-height: 1; display: none; border-radius: 6px; }
+    .item-search-clear:hover { background: var(--line-soft); color: var(--ink); }
+    .item-search-wrap.has-value .item-search-clear { display: block; }
 .section-head {
   display: flex; align-items: baseline; justify-content: space-between;
   margin-bottom: 10px; padding: 0 4px;
@@ -438,10 +446,11 @@ body.no-bottom { padding-bottom: 0; }
 .item-meta span { font-family: 'Geist Mono', monospace; }
 .item-meta .sep { color: var(--line); }
 .item-row2 {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 10px; margin-top: 12px; padding-top: 12px;
+  display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: 8px 10px; margin-top: 12px; padding-top: 12px;
   border-top: 1px dashed var(--line);
 }
+@media (min-width: 480px) { .item-row2 { grid-template-columns: repeat(4, 1fr); } }
 .metric { display: flex; flex-direction: column; gap: 2px; }
 .metric-label {
   font-size: 10px; text-transform: uppercase;
@@ -1193,6 +1202,11 @@ body.no-bottom { padding-bottom: 0; }
       <h2 class="section-title">Daftar barang</h2>
       <span class="section-count" id="item-count">0 model · 0 pcs</span>
     </div>
+    <div class="item-search-wrap" id="item-search-wrap">
+      <span class="item-search-icon">🔍</span>
+      <input type="text" class="item-search" id="item-search" placeholder="Cari nama / color / size..." autocomplete="off">
+      <button type="button" class="item-search-clear" id="item-search-clear" aria-label="Clear search">✕</button>
+    </div>
     <ul class="items-list" id="items-list"></ul>
   </section>
 
@@ -1779,6 +1793,15 @@ function renderItems() {
   const list = $('items-list');
   list.innerHTML = '';
   
+  // Search filter
+  const searchEl = document.getElementById('item-search');
+  const q = (searchEl && searchEl.value || '').trim().toLowerCase();
+  const filtered = q ? itemList.filter(it => {
+    return (it.nama||'').toLowerCase().includes(q)
+        || (it.color||'').toLowerCase().includes(q)
+        || (it.size||'').toLowerCase().includes(q);
+  }) : itemList;
+  
   if (!itemList.length) {
     const empty = document.createElement('li');
     empty.className = 'empty';
@@ -1787,7 +1810,15 @@ function renderItems() {
     return;
   }
   
-  itemList.forEach((item, idx) => {
+  if (!filtered.length) {
+    const empty = document.createElement('li');
+    empty.className = 'empty';
+    empty.innerHTML = `<div class="empty-icon">🔍</div><div class="empty-text">Gak ada barang yang cocok dengan <strong>"${escapeHtml(q)}"</strong>.</div>`;
+    list.appendChild(empty);
+    return;
+  }
+  
+  filtered.forEach((item, idx) => {
     const c = calcItem(item, cur.settings);
     const li = document.createElement('li');
     li.className = 'item' + (item.id === editingId ? ' editing' : '');
@@ -1819,9 +1850,13 @@ function renderItems() {
           <span class="metric-label">Tampil</span>
           <span class="metric-val">${fmtIDR(c.hargaTampil)}</span>
         </div>
+        <div class="metric">
+          <span class="metric-label">Selling</span>
+          <span class="metric-val">${fmtIDR(c.sellingPrice)}</span>
+        </div>
         <div class="metric profit">
-          <span class="metric-label">Profit row</span>
-          <span class="metric-val">${fmtIDRshort(c.netProfitAll)}</span>
+          <span class="metric-label">Profit/pc</span>
+          <span class="metric-val">${fmtIDRshort(c.netProfit)}</span>
         </div>
       </div>
       <div class="item-actions">
@@ -1862,6 +1897,26 @@ function renderTotals() {
   $('item-count').textContent = itemList.length + ' model · ' + totalQty + ' pcs';
 }
 
+function bindItemSearch() {
+  const inp = document.getElementById('item-search');
+  const wrap = document.getElementById('item-search-wrap');
+  const clr = document.getElementById('item-search-clear');
+  if (!inp || inp.dataset.bound) return;
+  inp.dataset.bound = '1';
+  let timer = null;
+  inp.addEventListener('input', () => {
+    if (wrap) wrap.classList.toggle('has-value', !!inp.value);
+    clearTimeout(timer);
+    timer = setTimeout(() => { renderItems(); }, 80);
+  });
+  if (clr) clr.addEventListener('click', () => {
+    inp.value = '';
+    if (wrap) wrap.classList.remove('has-value');
+    renderItems();
+    inp.focus();
+  });
+}
+
 function renderAll() {
   if (!suppliers.length) {
     showScreen('screen-onboarding');
@@ -1875,6 +1930,7 @@ function renderAll() {
   renderSettings();
   renderItems();
   renderTotals();
+  bindItemSearch();
   publishLiveSnapshot();
 }
 
