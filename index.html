@@ -3037,6 +3037,142 @@ init();
     }
     // Expose for debug
    window.__poDash = { open: openDash, close: closeDash, refresh: () => { cachedBackup = null; loadAndRender(); } };
+
+  // ============================================================
+  // Resilience layer: handle mobile tab-switch / background freeze
+  // ============================================================
+  (function setupResilience(){
+    let lastVisibleAt = Date.now();
+    let reconnecting = false;
+
+    function withTimeout(promiseLike, ms, label){
+      return new Promise((resolve) => {
+        let done = false;
+        const timer = setTimeout(() => {
+          if (done) return;
+          done = true;
+          resolve({ data: null, error: { message: 'timeout', _label: label, _timeout: true } });
+        }, ms);
+        Promise.resolve(promiseLike).then(v => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          resolve(v);
+        }, e => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          resolve({ data: null, error: e || { message: 'unknown' } });
+        });
+      });
+    }
+
+    try {
+      const origFrom = supabase.from.bind(supabase);
+      supabase.from = function(table){
+        const qb = origFrom(table);
+        ['insert','update','delete','upsert'].forEach(op => {
+          if (typeof qb[op] !== 'function') return;
+          const orig = qb[op].bind(qb);
+          qb[op] = function(){
+            const built = orig.apply(this, arguments);
+            const origThen = built.then ? built.then.bind(built) : null;
+            if (origThen) {
+              built.then = function(onF, onR){
+                const wrapped = withTimeout(new Promise((res, rej) => {
+                  origThen(res, rej);
+                }), 12000, table+'.'+op);
+                return wrapped.then(onF, onR);
+              };
+            }
+            return built;
+          };
+        });
+        return qb;
+      };
+    } catch(e) { console.warn('[resilience] patch failed', e); }
+
+    async function onWake(reason){
+      if (reconnecting) return;
+      reconnecting = true;
+      try {
+        const awayMs = Date.now() - lastVisibleAt;
+        if (awayMs > 8000) {
+          try {
+            if (supabase.auth && typeof supabase.auth.getSession === 'function') {
+              await withTimeout(supabase.auth.getSession(), 5000, 'getSession');
+            }
+          } catch(_){}
+          try {
+            if (supabase.realtime && typeof supabase.realtime.disconnect === 'function') {
+              try { supabase.realtime.disconnect(); } catch(_){}
+            }
+            if (supabase.removeAllChannels) {
+              try { await supabase.removeAllChannels(); } catch(_){}
+            }
+            if (supabase.realtime && typeof supabase.realtime.connect === 'function') {
+              try { supabase.realtime.connect(); } catch(_){}
+            }
+            if (typeof setupRealtime === 'function') {
+              try { setupRealtime(); } catch(_){}
+            }
+          } catch(_){}
+          try {
+            if (typeof setSyncStatus === 'function') {
+              setSyncStatus('idle', '');
+            }
+          } catch(_){}
+        }
+      } finally {
+        reconnecting = false;
+        lastVisibleAt = Date.now();
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        onWake('visibility');
+      } else {
+        lastVisibleAt = Date.now();
+      }
+    });
+    window.addEventListener('pageshow', () => onWake('pageshow'));
+    window.addEventListener('focus', () => onWake('focus'));
+    window.addEventListener('online', () => onWake('online'));
+
+    setInterval(() => {
+      try {
+        const pill = document.getElementById('sync-pill');
+        if (!pill) return;
+        if (pill.classList.contains('syncing')) {
+          const since = Number(pill.dataset.syncStart || 0);
+          if (!since) {
+            pill.dataset.syncStart = String(Date.now());
+            return;
+          }
+          if (Date.now() - since > 15000) {
+            pill.dataset.syncStart = '';
+            if (typeof setSyncStatus === 'function') {
+              setSyncStatus('error', 'Koneksi macet, coba lagi');
+            }
+          }
+        } else {
+          pill.dataset.syncStart = '';
+        }
+      } catch(_){}
+    }, 3000);
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const pill = document.getElementById('sync-pill');
+      if (pill && !pill.dataset.tapBound) {
+        pill.dataset.tapBound = '1';
+        pill.style.cursor = 'pointer';
+        pill.title = 'Tap untuk reconnect';
+        pill.addEventListener('click', () => onWake('manual'));
+      }
+    });
+  })();
+
 })();
 </script>
 <script>
