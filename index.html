@@ -3525,7 +3525,7 @@ init();
   
 <script>
   (function(){
-      // === R7 patch: prevent black-flash by overriding .app-hide-when-dash CSS rule ===
+      return; // === R7 patch: DISABLED - was hiding dashboard
       // R3/R4 add .app-hide-when-dash to .settings/.items-section/.quick-add/.totals-bar
       // when their MutationObserver fires (e.g. after Supabase write triggers DOM mutation).
       // R6 watchTimer (1s interval) removes the class but creates 1s blank flash.
