@@ -3419,7 +3419,7 @@ init();
       //  - Static snapshot not reflecting live Supabase data (misleading UX)
       // R6 disables all dashboard behavior cleanly.
 
-      function killDashboard(){
+      function killDashboard(){return; /* disabled */
             // Remove injected dashboard tab
             document.querySelectorAll('#tabs .tab-dash').forEach(function(n){n.remove();});
             // Remove inline dashboard section
@@ -3476,7 +3476,7 @@ init();
             });
       }
 
-      function injectKeepCSS(){
+      function injectKeepCSS(){return; /* disabled */
             if (document.getElementById('po-r6-css')) return;
             var st = document.createElement('style');
             st.id = 'po-r6-css';
@@ -3507,7 +3507,7 @@ init();
       setTimeout(setup, 3000);
 
       // Watch tabs container: if .tab-dash gets re-injected by R4/R5 observers, kill it again
-      var watchTimer = setInterval(function(){
+      var watchTimer = setInterval(function(){return; /* disabled */return; /* disabled */
             var dashTab = document.querySelector('#tabs .tab-dash');
             if (dashTab) dashTab.remove();
             var inline = document.getElementById('dash-inline');
